@@ -18,23 +18,46 @@ pub struct CallbackPolicy {
 
 impl CallbackPolicy {
     pub fn blocking_main_thread() -> Self {
-        Self { mode: CallbackMode::Blocking, timeout_ms: None, max_depth: 1, reentrant: false }
+        Self {
+            mode: CallbackMode::Blocking,
+            timeout_ms: None,
+            max_depth: 1,
+            reentrant: false,
+        }
     }
 
     pub fn fire_and_forget() -> Self {
-        Self { mode: CallbackMode::FireAndForget, timeout_ms: None, max_depth: 1, reentrant: false }
+        Self {
+            mode: CallbackMode::FireAndForget,
+            timeout_ms: None,
+            max_depth: 1,
+            reentrant: false,
+        }
     }
 
-    pub fn timeout_ms(mut self, value: u64) -> Self { self.timeout_ms = Some(value); self }
-    pub fn max_depth(mut self, value: u32) -> Self { self.max_depth = value; self }
-    pub fn reentrant(mut self, value: bool) -> Self { self.reentrant = value; self }
+    pub fn timeout_ms(mut self, value: u64) -> Self {
+        self.timeout_ms = Some(value);
+        self
+    }
+    pub fn max_depth(mut self, value: u32) -> Self {
+        self.max_depth = value;
+        self
+    }
+    pub fn reentrant(mut self, value: bool) -> Self {
+        self.reentrant = value;
+        self
+    }
 
     pub fn validate(&self) -> WtResult<()> {
         if self.max_depth == 0 {
-            return Err(RwasmtimeError::invalid_argument("callback policy max_depth must be at least 1"));
+            return Err(RwasmtimeError::invalid_argument(
+                "callback policy max_depth must be at least 1",
+            ));
         }
         if self.reentrant && self.max_depth < 2 {
-            return Err(RwasmtimeError::invalid_argument("reentrant callback policy requires max_depth of at least 2"));
+            return Err(RwasmtimeError::invalid_argument(
+                "reentrant callback policy requires max_depth of at least 2",
+            ));
         }
         Ok(())
     }
@@ -67,7 +90,9 @@ impl CallbackServicePlan {
             CallbackWakeStrategy::MainThreadImmediate
         } else {
             match target_os {
-                "linux" | "macos" | "freebsd" | "openbsd" | "netbsd" => CallbackWakeStrategy::PosixInputHandlerPipe,
+                "linux" | "macos" | "freebsd" | "openbsd" | "netbsd" => {
+                    CallbackWakeStrategy::PosixInputHandlerPipe
+                }
                 "windows" => CallbackWakeStrategy::WindowsMessagePump,
                 _ => CallbackWakeStrategy::AdapterManaged,
             }
@@ -76,7 +101,11 @@ impl CallbackServicePlan {
             CallbackMode::Blocking => CallbackReturnPath::BlockingReply,
             CallbackMode::FireAndForget => CallbackReturnPath::FireAndForget,
         };
-        Self { wake_strategy, return_path, user_drain_required: false }
+        Self {
+            wake_strategy,
+            return_path,
+            user_drain_required: false,
+        }
     }
 
     pub fn requires_user_drain(&self) -> bool {
@@ -135,9 +164,18 @@ impl CallbackSpec {
         }
     }
 
-    pub fn params_schema(mut self, value: impl Into<String>) -> Self { self.params_schema = Some(value.into()); self }
-    pub fn results_schema(mut self, value: impl Into<String>) -> Self { self.results_schema = Some(value.into()); self }
-    pub fn policy(mut self, value: CallbackPolicy) -> Self { self.policy = value; self }
+    pub fn params_schema(mut self, value: impl Into<String>) -> Self {
+        self.params_schema = Some(value.into());
+        self
+    }
+    pub fn results_schema(mut self, value: impl Into<String>) -> Self {
+        self.results_schema = Some(value.into());
+        self
+    }
+    pub fn policy(mut self, value: CallbackPolicy) -> Self {
+        self.policy = value;
+        self
+    }
 
     pub fn key(&self) -> String {
         match &self.module {
@@ -157,18 +195,24 @@ impl CallbackSpec {
         match self.abi {
             CallbackAbi::Component => {
                 if self.module.is_some() {
-                    return Err(RwasmtimeError::invalid_argument("component callbacks must not set a core module name"));
+                    return Err(RwasmtimeError::invalid_argument(
+                        "component callbacks must not set a core module name",
+                    ));
                 }
             }
             CallbackAbi::Core | CallbackAbi::CoreMsgpack => {
                 let Some(module) = &self.module else {
-                    return Err(RwasmtimeError::invalid_argument("core callbacks require a module name"));
+                    return Err(RwasmtimeError::invalid_argument(
+                        "core callbacks require a module name",
+                    ));
                 };
                 validate_non_empty_name("callback module", module)?;
             }
         }
         if self.policy.mode == CallbackMode::FireAndForget && self.results_schema.is_some() {
-            return Err(RwasmtimeError::invalid_argument("fire-and-forget callbacks must not declare results"));
+            return Err(RwasmtimeError::invalid_argument(
+                "fire-and-forget callbacks must not declare results",
+            ));
         }
         self.policy.validate()
     }
@@ -176,7 +220,9 @@ impl CallbackSpec {
 
 fn validate_non_empty_name(label: &str, value: &str) -> WtResult<()> {
     if value.is_empty() || value.contains('\0') {
-        return Err(RwasmtimeError::invalid_argument(format!("{label} must be non-empty and must not contain NUL bytes")));
+        return Err(RwasmtimeError::invalid_argument(format!(
+            "{label} must be non-empty and must not contain NUL bytes"
+        )));
     }
     Ok(())
 }
@@ -188,7 +234,9 @@ pub struct CallbackSet {
 
 impl CallbackSet {
     pub fn new() -> Self {
-        Self { imports: Vec::new() }
+        Self {
+            imports: Vec::new(),
+        }
     }
 
     pub fn callback(mut self, spec: CallbackSpec) -> Self {
@@ -202,7 +250,9 @@ impl CallbackSet {
             spec.validate()?;
             let key = spec.key();
             if !seen.insert(key.clone()) {
-                return Err(RwasmtimeError::invalid_argument(format!("duplicate callback import: {key}")));
+                return Err(RwasmtimeError::invalid_argument(format!(
+                    "duplicate callback import: {key}"
+                )));
             }
         }
         Ok(())
@@ -228,7 +278,12 @@ pub struct CallbackRequest {
 
 impl CallbackRequest {
     pub fn new(id: impl Into<String>, name: impl Into<String>, payload: Vec<u8>) -> Self {
-        Self { id: id.into(), name: name.into(), payload, metadata: BTreeMap::new() }
+        Self {
+            id: id.into(),
+            name: name.into(),
+            payload,
+            metadata: BTreeMap::new(),
+        }
     }
 
     pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -255,7 +310,9 @@ pub struct CallbackError {
 
 impl CallbackError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 
@@ -281,13 +338,21 @@ pub struct CallbackBrokerQueue {
 
 impl CallbackBrokerQueue {
     pub fn new() -> Self {
-        Self { next_ticket: 1, pending: VecDeque::new(), completed: HashMap::new() }
+        Self {
+            next_ticket: 1,
+            pending: VecDeque::new(),
+            completed: HashMap::new(),
+        }
     }
 
     pub fn enqueue(&mut self, request: CallbackRequest, policy: CallbackPolicy) -> CallbackTicket {
         let ticket = CallbackTicket(self.next_ticket);
         self.next_ticket += 1;
-        self.pending.push_back(PendingCallback { ticket, request, policy });
+        self.pending.push_back(PendingCallback {
+            ticket,
+            request,
+            policy,
+        });
         ticket
     }
 
@@ -304,11 +369,13 @@ impl CallbackBrokerQueue {
     }
 
     pub fn complete(&mut self, ticket: CallbackTicket, reply: CallbackReply) {
-        self.completed.insert(ticket, CallbackCompletion::Reply(reply));
+        self.completed
+            .insert(ticket, CallbackCompletion::Reply(reply));
     }
 
     pub fn fail(&mut self, ticket: CallbackTicket, error: CallbackError) {
-        self.completed.insert(ticket, CallbackCompletion::Error(error));
+        self.completed
+            .insert(ticket, CallbackCompletion::Error(error));
     }
 
     pub fn take_completion(&mut self, ticket: CallbackTicket) -> Option<CallbackCompletion> {
@@ -321,7 +388,9 @@ impl CallbackBrokerQueue {
     {
         let mut serviced = 0;
         while serviced < max {
-            let Some(pending) = self.pop_pending() else { break; };
+            let Some(pending) = self.pop_pending() else {
+                break;
+            };
             match host(&pending.request, &pending.policy) {
                 Ok(reply) => self.complete(pending.ticket, reply),
                 Err(error) => self.fail(pending.ticket, error),
@@ -345,7 +414,11 @@ pub trait HostCallbackBroker: Send + Sync + 'static {
         policy: CallbackPolicy,
     ) -> Result<CallbackReply, CallbackError>;
 
-    fn enqueue(&self, request: CallbackRequest, policy: CallbackPolicy) -> Result<CallbackTicket, CallbackError>;
+    fn enqueue(
+        &self,
+        request: CallbackRequest,
+        policy: CallbackPolicy,
+    ) -> Result<CallbackTicket, CallbackError>;
 }
 
 #[cfg(test)]
@@ -429,7 +502,9 @@ mod tests {
         let callbacks = CallbackSet::new()
             .callback(CallbackSpec::core("r", "score"))
             .callback(CallbackSpec::core("r", "score"));
-        let err = callbacks.validate().expect_err("duplicate imports should fail before linker wiring");
+        let err = callbacks
+            .validate()
+            .expect_err("duplicate imports should fail before linker wiring");
         assert!(err.message.contains("duplicate callback import"));
     }
 
@@ -447,7 +522,10 @@ mod tests {
 
         let serviced = queue.service_pending(10, |request, policy| {
             assert_eq!(request.name, "rwasmtime:host/callbacks.score");
-            assert_eq!(request.metadata.get("encoding").map(String::as_str), Some("bytes"));
+            assert_eq!(
+                request.metadata.get("encoding").map(String::as_str),
+                Some("bytes")
+            );
             assert_eq!(policy.timeout_ms, Some(1000));
             Ok(CallbackReply::new(vec![42]))
         });
@@ -455,7 +533,10 @@ mod tests {
         assert_eq!(serviced, 1);
         assert_eq!(queue.pending_len(), 0);
         assert_eq!(queue.completed_len(), 1);
-        assert_eq!(queue.take_completion(ticket), Some(CallbackCompletion::Reply(CallbackReply::new(vec![42]))));
+        assert_eq!(
+            queue.take_completion(ticket),
+            Some(CallbackCompletion::Reply(CallbackReply::new(vec![42])))
+        );
         assert_eq!(queue.completed_len(), 0);
     }
 
@@ -467,21 +548,39 @@ mod tests {
             CallbackPolicy::blocking_main_thread(),
         );
 
-        let serviced = queue.service_pending(1, |_request, _policy| Err(CallbackError::new("callback failed")));
+        let serviced = queue.service_pending(1, |_request, _policy| {
+            Err(CallbackError::new("callback failed"))
+        });
         assert_eq!(serviced, 1);
-        assert_eq!(queue.take_completion(ticket), Some(CallbackCompletion::Error(CallbackError::new("callback failed"))));
+        assert_eq!(
+            queue.take_completion(ticket),
+            Some(CallbackCompletion::Error(CallbackError::new(
+                "callback failed"
+            )))
+        );
     }
 
     #[test]
     fn callback_broker_queue_respects_service_budget() {
         let mut queue = CallbackBrokerQueue::new();
-        let first = queue.enqueue(CallbackRequest::new("1", "a", Vec::new()), CallbackPolicy::blocking_main_thread());
-        let second = queue.enqueue(CallbackRequest::new("2", "b", Vec::new()), CallbackPolicy::blocking_main_thread());
+        let first = queue.enqueue(
+            CallbackRequest::new("1", "a", Vec::new()),
+            CallbackPolicy::blocking_main_thread(),
+        );
+        let second = queue.enqueue(
+            CallbackRequest::new("2", "b", Vec::new()),
+            CallbackPolicy::blocking_main_thread(),
+        );
 
-        let serviced = queue.service_pending(1, |request, _policy| Ok(CallbackReply::new(request.name.as_bytes().to_vec())));
+        let serviced = queue.service_pending(1, |request, _policy| {
+            Ok(CallbackReply::new(request.name.as_bytes().to_vec()))
+        });
         assert_eq!(serviced, 1);
         assert_eq!(queue.pending_len(), 1);
-        assert!(matches!(queue.take_completion(first), Some(CallbackCompletion::Reply(_))));
+        assert!(matches!(
+            queue.take_completion(first),
+            Some(CallbackCompletion::Reply(_))
+        ));
         assert_eq!(queue.take_completion(second), None);
     }
 
@@ -489,17 +588,27 @@ mod tests {
     fn callback_service_plan_uses_platform_wake_machinery_without_user_drain() {
         let blocking = CallbackPolicy::blocking_main_thread();
         let linux = CallbackServicePlan::for_target(&blocking, "linux", false);
-        assert_eq!(linux.wake_strategy, CallbackWakeStrategy::PosixInputHandlerPipe);
+        assert_eq!(
+            linux.wake_strategy,
+            CallbackWakeStrategy::PosixInputHandlerPipe
+        );
         assert_eq!(linux.return_path, CallbackReturnPath::BlockingReply);
         assert!(!linux.requires_user_drain());
 
-        let windows = CallbackServicePlan::for_target(&CallbackPolicy::fire_and_forget(), "windows", false);
-        assert_eq!(windows.wake_strategy, CallbackWakeStrategy::WindowsMessagePump);
+        let windows =
+            CallbackServicePlan::for_target(&CallbackPolicy::fire_and_forget(), "windows", false);
+        assert_eq!(
+            windows.wake_strategy,
+            CallbackWakeStrategy::WindowsMessagePump
+        );
         assert_eq!(windows.return_path, CallbackReturnPath::FireAndForget);
         assert!(!windows.requires_user_drain());
 
         let main_thread = CallbackServicePlan::for_target(&blocking, "linux", true);
-        assert_eq!(main_thread.wake_strategy, CallbackWakeStrategy::MainThreadImmediate);
+        assert_eq!(
+            main_thread.wake_strategy,
+            CallbackWakeStrategy::MainThreadImmediate
+        );
         assert!(!main_thread.requires_user_drain());
     }
 }

@@ -103,6 +103,25 @@ The contract above is not webR-specific and does not define rich display,
 interrupts, package loading, or stdin prompts by itself. Those should be layered
 onto the protocol deliberately rather than hidden in ad hoc host-side code.
 
+MicroPython is a good target for this protocol, but the build shape matters. A
+stock Emscripten/JavaScript MicroPython package may expose functions such as
+`_mp_js_init()` and `_mp_js_do_str()` while importing `env::memory`, `env::table`,
+Emscripten syscall/longjmp helpers, and JavaScript hooks for stdout. That is a
+JS-hosted artifact, not directly a Rwasmtime core-memory REPL guest.
+
+Simon Willison's [`micropython-wasm`](https://github.com/simonw/micropython-wasm)
+is closer: it ships a WASI MicroPython artifact for Wasmtime and implements both
+a replay session and a real persistent session by running a bootstrap loop inside
+MicroPython. The persistent form blocks in guest code on a host function named
+`micropython_wasm.host_call("__session_next__", ...)`, executes snippets in one
+MicroPython globals dictionary, and reports results through another host call.
+That is exactly the kind of guest-owned REPL protocol Rwasmtime should support.
+The current blockers are explicit, not conceptual: the artifact uses Wasm
+exception handling, and it imports custom `micropython_wasm.host_call` and
+`host_result_cap` functions in addition to WASI. Rwasmtime therefore needs
+`exceptions = TRUE` support and typed custom host imports before this can become
+a native integration test.
+
 # webR as a guest
 
 A webR sandbox inside Wasmtime needs a webR build that is compatible with the

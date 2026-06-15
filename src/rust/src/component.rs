@@ -40,23 +40,51 @@ impl ComponentSpec {
         self
     }
 
-    pub fn wasi(mut self, wasi: WasiSpec) -> Self { self.wasi = Some(wasi); self }
-    pub fn limits(mut self, limits: Limits) -> Self { self.limits = Some(limits); self }
-    pub fn callbacks(mut self, callbacks: CallbackSet) -> Self { self.callbacks = Some(callbacks); self }
-    pub fn arrays(mut self, arrays: ArrayPolicy) -> Self { self.arrays = arrays; self }
+    pub fn wasi(mut self, wasi: WasiSpec) -> Self {
+        self.wasi = Some(wasi);
+        self
+    }
+    pub fn limits(mut self, limits: Limits) -> Self {
+        self.limits = Some(limits);
+        self
+    }
+    pub fn callbacks(mut self, callbacks: CallbackSet) -> Self {
+        self.callbacks = Some(callbacks);
+        self
+    }
+    pub fn arrays(mut self, arrays: ArrayPolicy) -> Self {
+        self.arrays = arrays;
+        self
+    }
 
     pub fn wit(mut self, path: impl Into<String>, world: Option<String>, validate: bool) -> Self {
-        self.wit = Some(WitSpec { path: path.into(), world, validate });
+        self.wit = Some(WitSpec {
+            path: path.into(),
+            world,
+            validate,
+        });
         self
     }
 
     pub fn prepare(self) -> PreparedApp {
         let mut app = AppSpec::new(self.source).component().arrays(self.arrays);
-        if let Some(runtime) = self.runtime { app = app.runtime_spec(runtime); }
-        if let Some(wasi) = self.wasi { app = app.wasi(wasi); }
-        if let Some(limits) = self.limits { app = app.limits(limits); }
-        if let Some(callbacks) = self.callbacks { app = app.callbacks(callbacks); }
-        if let Some(wit) = self.wit { app.wit(wit.path, wit.world, wit.validate).prepare() } else { app.prepare() }
+        if let Some(runtime) = self.runtime {
+            app = app.runtime_spec(runtime);
+        }
+        if let Some(wasi) = self.wasi {
+            app = app.wasi(wasi);
+        }
+        if let Some(limits) = self.limits {
+            app = app.limits(limits);
+        }
+        if let Some(callbacks) = self.callbacks {
+            app = app.callbacks(callbacks);
+        }
+        if let Some(wit) = self.wit {
+            app.wit(wit.path, wit.world, wit.validate).prepare()
+        } else {
+            app.prepare()
+        }
     }
 
     pub fn exports(&self) -> Result<Vec<ComponentItem>> {
@@ -94,7 +122,11 @@ pub struct ComponentCallRequest {
 
 impl ComponentCallRequest {
     pub fn new(export: impl Into<String>) -> Self {
-        Self { export: export.into(), args: Vec::new(), expected_results: None }
+        Self {
+            export: export.into(),
+            args: Vec::new(),
+            expected_results: None,
+        }
     }
 
     pub fn arg(mut self, value: WitValue) -> Self {
@@ -116,7 +148,10 @@ pub struct WitField {
 
 impl WitField {
     pub fn new(name: impl Into<String>, ty: WitType) -> Self {
-        Self { name: name.into(), ty }
+        Self {
+            name: name.into(),
+            ty,
+        }
     }
 }
 
@@ -128,7 +163,10 @@ pub struct WitCase {
 
 impl WitCase {
     pub fn new(name: impl Into<String>, ty: Option<WitType>) -> Self {
-        Self { name: name.into(), ty }
+        Self {
+            name: name.into(),
+            ty,
+        }
     }
 }
 
@@ -146,7 +184,10 @@ pub enum WitType {
     Record(Vec<WitField>),
     Enum(Vec<String>),
     Variant(Vec<WitCase>),
-    Result { ok: Option<Box<WitType>>, err: Option<Box<WitType>> },
+    Result {
+        ok: Option<Box<WitType>>,
+        err: Option<Box<WitType>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,7 +203,10 @@ pub enum WitValue {
     Tuple(Vec<WitValue>),
     Record(BTreeMap<String, WitValue>),
     Enum(String),
-    Variant { case: String, value: Option<Box<WitValue>> },
+    Variant {
+        case: String,
+        value: Option<Box<WitValue>>,
+    },
     ResultOk(Option<Box<WitValue>>),
     ResultErr(Option<Box<WitValue>>),
 }
@@ -176,13 +220,21 @@ pub struct WitValueMismatch {
 
 impl WitValueMismatch {
     fn new(path: String, expected: String, found: String) -> Self {
-        Self { path, expected, found }
+        Self {
+            path,
+            expected,
+            found,
+        }
     }
 }
 
 impl WitType {
-    pub fn list(item: WitType) -> Self { Self::List(Box::new(item)) }
-    pub fn option(item: WitType) -> Self { Self::Option(Box::new(item)) }
+    pub fn list(item: WitType) -> Self {
+        Self::List(Box::new(item))
+    }
+    pub fn option(item: WitType) -> Self {
+        Self::Option(Box::new(item))
+    }
 
     pub fn matches_value(&self, value: &WitValue) -> bool {
         self.validate_value(value).is_ok()
@@ -214,7 +266,11 @@ impl WitValue {
     }
 }
 
-fn validate_wit_value(ty: &WitType, value: &WitValue, path: String) -> std::result::Result<(), WitValueMismatch> {
+fn validate_wit_value(
+    ty: &WitType,
+    value: &WitValue,
+    path: String,
+) -> std::result::Result<(), WitValueMismatch> {
     match (ty, value) {
         (WitType::Bool, WitValue::Bool(_))
         | (WitType::S32, WitValue::S32(_))
@@ -228,7 +284,9 @@ fn validate_wit_value(ty: &WitType, value: &WitValue, path: String) -> std::resu
             }
             Ok(())
         }
-        (WitType::Option(item_ty), WitValue::Option(Some(item))) => validate_wit_value(item_ty, item, format!("{path}?")),
+        (WitType::Option(item_ty), WitValue::Option(Some(item))) => {
+            validate_wit_value(item_ty, item, format!("{path}?"))
+        }
         (WitType::Option(_), WitValue::Option(None)) => Ok(()),
         (WitType::Tuple(types), WitValue::Tuple(values)) if types.len() == values.len() => {
             for (i, (item_ty, item)) in types.iter().zip(values.iter()).enumerate() {
@@ -239,7 +297,11 @@ fn validate_wit_value(ty: &WitType, value: &WitValue, path: String) -> std::resu
         (WitType::Record(fields), WitValue::Record(values)) => {
             for field in fields {
                 let item = values.get(&field.name).ok_or_else(|| {
-                    WitValueMismatch::new(format!("{path}.{}", field.name), describe_wit_type(&field.ty), "missing".to_string())
+                    WitValueMismatch::new(
+                        format!("{path}.{}", field.name),
+                        describe_wit_type(&field.ty),
+                        "missing".to_string(),
+                    )
                 })?;
                 validate_wit_value(&field.ty, item, format!("{path}.{}", field.name))?;
             }
@@ -248,32 +310,69 @@ fn validate_wit_value(ty: &WitType, value: &WitValue, path: String) -> std::resu
         (WitType::Enum(cases), WitValue::Enum(case)) if cases.iter().any(|c| c == case) => Ok(()),
         (WitType::Variant(cases), WitValue::Variant { case, value }) => {
             let item = cases.iter().find(|c| c.name == *case).ok_or_else(|| {
-                WitValueMismatch::new(path.clone(), describe_wit_type(ty), value_label(value.as_deref(), "unknown-variant-case"))
+                WitValueMismatch::new(
+                    path.clone(),
+                    describe_wit_type(ty),
+                    value_label(value.as_deref(), "unknown-variant-case"),
+                )
             })?;
             match (&item.ty, value) {
                 (None, None) => Ok(()),
-                (Some(item_ty), Some(item_value)) => validate_wit_value(item_ty, item_value, format!("{path}.{case}")),
-                (None, Some(_)) => Err(WitValueMismatch::new(path, "case without payload".to_string(), "payload".to_string())),
-                (Some(item_ty), None) => Err(WitValueMismatch::new(path, describe_wit_type(item_ty), "missing".to_string())),
+                (Some(item_ty), Some(item_value)) => {
+                    validate_wit_value(item_ty, item_value, format!("{path}.{case}"))
+                }
+                (None, Some(_)) => Err(WitValueMismatch::new(
+                    path,
+                    "case without payload".to_string(),
+                    "payload".to_string(),
+                )),
+                (Some(item_ty), None) => Err(WitValueMismatch::new(
+                    path,
+                    describe_wit_type(item_ty),
+                    "missing".to_string(),
+                )),
             }
         }
-        (WitType::Result { ok, .. }, WitValue::ResultOk(value)) => validate_optional_payload(ok.as_deref(), value.as_deref(), format!("{path}.ok")),
-        (WitType::Result { err, .. }, WitValue::ResultErr(value)) => validate_optional_payload(err.as_deref(), value.as_deref(), format!("{path}.err")),
-        _ => Err(WitValueMismatch::new(path, describe_wit_type(ty), value.type_label().to_string())),
+        (WitType::Result { ok, .. }, WitValue::ResultOk(value)) => {
+            validate_optional_payload(ok.as_deref(), value.as_deref(), format!("{path}.ok"))
+        }
+        (WitType::Result { err, .. }, WitValue::ResultErr(value)) => {
+            validate_optional_payload(err.as_deref(), value.as_deref(), format!("{path}.err"))
+        }
+        _ => Err(WitValueMismatch::new(
+            path,
+            describe_wit_type(ty),
+            value.type_label().to_string(),
+        )),
     }
 }
 
-fn validate_optional_payload(ty: Option<&WitType>, value: Option<&WitValue>, path: String) -> std::result::Result<(), WitValueMismatch> {
+fn validate_optional_payload(
+    ty: Option<&WitType>,
+    value: Option<&WitValue>,
+    path: String,
+) -> std::result::Result<(), WitValueMismatch> {
     match (ty, value) {
         (None, None) => Ok(()),
         (Some(ty), Some(value)) => validate_wit_value(ty, value, path),
-        (None, Some(value)) => Err(WitValueMismatch::new(path, "no payload".to_string(), value.type_label().to_string())),
-        (Some(ty), None) => Err(WitValueMismatch::new(path, describe_wit_type(ty), "missing".to_string())),
+        (None, Some(value)) => Err(WitValueMismatch::new(
+            path,
+            "no payload".to_string(),
+            value.type_label().to_string(),
+        )),
+        (Some(ty), None) => Err(WitValueMismatch::new(
+            path,
+            describe_wit_type(ty),
+            "missing".to_string(),
+        )),
     }
 }
 
 fn value_label(value: Option<&WitValue>, fallback: &str) -> String {
-    value.map(WitValue::type_label).unwrap_or(fallback).to_string()
+    value
+        .map(WitValue::type_label)
+        .unwrap_or(fallback)
+        .to_string()
 }
 
 fn describe_wit_type(ty: &WitType) -> String {
@@ -286,7 +385,14 @@ fn describe_wit_type(ty: &WitType) -> String {
         WitType::String => "string".to_string(),
         WitType::List(item) => format!("list<{}>", describe_wit_type(item)),
         WitType::Option(item) => format!("option<{}>", describe_wit_type(item)),
-        WitType::Tuple(items) => format!("tuple<{}>", items.iter().map(describe_wit_type).collect::<Vec<_>>().join(",")),
+        WitType::Tuple(items) => format!(
+            "tuple<{}>",
+            items
+                .iter()
+                .map(describe_wit_type)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
         WitType::Record(_) => "record".to_string(),
         WitType::Enum(_) => "enum".to_string(),
         WitType::Variant(_) => "variant".to_string(),
@@ -305,9 +411,18 @@ impl ComponentItem {
         }
     }
 
-    pub fn interface(mut self, value: impl Into<String>) -> Self { self.interface = Some(value.into()); self }
-    pub fn params_schema(mut self, value: impl Into<String>) -> Self { self.params_schema = Some(value.into()); self }
-    pub fn results_schema(mut self, value: impl Into<String>) -> Self { self.results_schema = Some(value.into()); self }
+    pub fn interface(mut self, value: impl Into<String>) -> Self {
+        self.interface = Some(value.into());
+        self
+    }
+    pub fn params_schema(mut self, value: impl Into<String>) -> Self {
+        self.params_schema = Some(value.into());
+        self
+    }
+    pub fn results_schema(mut self, value: impl Into<String>) -> Self {
+        self.results_schema = Some(value.into());
+        self
+    }
 }
 
 #[cfg(test)]
@@ -321,33 +436,54 @@ mod tests {
 
     #[test]
     fn component_pipeline_prepares_as_component_app() {
-        let runtime = RuntimeSpec::new().compiler(CompilerSpec::cranelift()).build();
-        let callbacks = CallbackSet::new().callback(CallbackSpec::component("rwasmtime:host/callbacks.log"));
+        let runtime = RuntimeSpec::new()
+            .compiler(CompilerSpec::cranelift())
+            .build();
+        let callbacks =
+            CallbackSet::new().callback(CallbackSpec::component("rwasmtime:host/callbacks.log"));
         let prepared = ComponentSpec::new("stats_plugin.component.wasm")
             .runtime(&runtime)
             .wasi(WasiSpec::new().arg("--mode=test"))
             .limits(Limits::new().memory_bytes(128 * 1024 * 1024))
             .callbacks(callbacks)
-            .arrays(ArrayPolicy::new().default_dtype(ArrayDType::F64).transport(ArrayTransport::Arena))
+            .arrays(
+                ArrayPolicy::new()
+                    .default_dtype(ArrayDType::F64)
+                    .transport(ArrayTransport::Arena),
+            )
             .wit("world.wit", Some("stats".to_string()), true)
             .prepare();
 
         assert_eq!(prepared.spec.source, "stats_plugin.component.wasm");
         assert_eq!(prepared.spec.kind, crate::app::SourceKind::Component);
         assert_eq!(prepared.spec.wasi.as_ref().map(|w| w.args.len()), Some(1));
-        assert_eq!(prepared.spec.limits.as_ref().and_then(|l| l.memory_bytes), Some(128 * 1024 * 1024));
-        assert_eq!(prepared.spec.callbacks.as_ref().map(|c| c.imports.len()), Some(1));
-        assert_eq!(prepared.spec.wit.as_ref().and_then(|w| w.world.as_deref()), Some("stats"));
+        assert_eq!(
+            prepared.spec.limits.as_ref().and_then(|l| l.memory_bytes),
+            Some(128 * 1024 * 1024)
+        );
+        assert_eq!(
+            prepared.spec.callbacks.as_ref().map(|c| c.imports.len()),
+            Some(1)
+        );
+        assert_eq!(
+            prepared.spec.wit.as_ref().and_then(|w| w.world.as_deref()),
+            Some("stats")
+        );
     }
 
     #[test]
     fn component_introspection_fails_honestly_until_wit_backend_lands() {
-        let component = ComponentSpec::new("stats_plugin.component.wasm").wit("world.wit", None, true);
-        let err = component.exports().expect_err("component introspection is backend work");
+        let component =
+            ComponentSpec::new("stats_plugin.component.wasm").wit("world.wit", None, true);
+        let err = component
+            .exports()
+            .expect_err("component introspection is backend work");
         assert_eq!(err.kind, RwasmtimeErrorKind::NotImplemented);
         assert!(err.message.contains("wt_component_exports"));
 
-        let err = component.imports().expect_err("component introspection is backend work");
+        let err = component
+            .imports()
+            .expect_err("component introspection is backend work");
         assert_eq!(err.kind, RwasmtimeErrorKind::NotImplemented);
         assert!(err.message.contains("wt_component_imports"));
     }
@@ -374,7 +510,10 @@ mod tests {
         ]);
         let mut record = BTreeMap::new();
         record.insert("name".to_string(), WitValue::String("sample".to_string()));
-        record.insert("scores".to_string(), WitValue::List(vec![WitValue::F64(1.0), WitValue::F64(2.0)]));
+        record.insert(
+            "scores".to_string(),
+            WitValue::List(vec![WitValue::F64(1.0), WitValue::F64(2.0)]),
+        );
         record.insert("label".to_string(), WitValue::Option(None));
 
         assert!(ty.matches_value(&WitValue::Record(record)));
@@ -385,7 +524,9 @@ mod tests {
         let ty = WitType::list(WitType::Record(vec![WitField::new("score", WitType::F64)]));
         let mut record = BTreeMap::new();
         record.insert("score".to_string(), WitValue::String("bad".to_string()));
-        let err = ty.validate_value(&WitValue::List(vec![WitValue::Record(record)])).expect_err("string is not f64");
+        let err = ty
+            .validate_value(&WitValue::List(vec![WitValue::Record(record)]))
+            .expect_err("string is not f64");
 
         assert_eq!(err.path, "$[0].score");
         assert_eq!(err.expected, "f64");
@@ -396,10 +537,16 @@ mod tests {
     fn component_call_request_records_wit_args_without_r_objects() {
         let request = ComponentCallRequest::new("stats:run")
             .arg(WitValue::List(vec![WitValue::F64(1.0), WitValue::F64(2.0)]))
-            .expected_results(WitType::Result { ok: Some(Box::new(WitType::F64)), err: Some(Box::new(WitType::String)) });
+            .expected_results(WitType::Result {
+                ok: Some(Box::new(WitType::F64)),
+                err: Some(Box::new(WitType::String)),
+            });
 
         assert_eq!(request.export, "stats:run");
         assert_eq!(request.args.len(), 1);
-        assert!(matches!(request.expected_results, Some(WitType::Result { .. })));
+        assert!(matches!(
+            request.expected_results,
+            Some(WitType::Result { .. })
+        ));
     }
 }

@@ -19,17 +19,36 @@ pub mod repl;
 pub mod runtime_objects;
 pub mod wasi;
 
-pub use aot::{ArtifactCompatibility, ArtifactCompatibilityIssue, ArtifactMetadata, ARTIFACT_FORMAT_VERSION};
-pub use app::{AppSpec, ArrayPolicy, Job, JobPoll, JobState, PreparedApp, RwasmtimeError, RwasmtimeErrorKind, Session, SourceKind, Value};
-pub use arrays::{ArrayAllocator, ArrayArgument, ArrayBuffer, ArrayWriteRequest, BufferLayout, MemoryView, MemoryViewLifetime};
+pub use aot::{
+    ArtifactCompatibility, ArtifactCompatibilityIssue, ArtifactMetadata, ARTIFACT_FORMAT_VERSION,
+};
+pub use app::{
+    AppSpec, ArrayPolicy, Job, JobPoll, JobState, PreparedApp, RwasmtimeError, RwasmtimeErrorKind,
+    Session, SourceKind, Value,
+};
+pub use arrays::{
+    ArrayAllocator, ArrayArgument, ArrayBuffer, ArrayWriteRequest, BufferLayout, MemoryView,
+    MemoryViewLifetime,
+};
 #[cfg(feature = "wasmtime")]
 pub use backend::WasmtimeRuntime;
-pub use callbacks::{CallbackAbi, CallbackBrokerQueue, CallbackCompletion, CallbackError, CallbackPolicy, CallbackReply, CallbackRequest, CallbackReturnPath, CallbackServicePlan, CallbackSet, CallbackSpec, CallbackTicket, CallbackWakeStrategy, HostCallbackBroker, PendingCallback};
-pub use component::{ComponentCallRequest, ComponentItem, ComponentItemKind, ComponentSpec, WitCase, WitField, WitType, WitValue, WitValueMismatch};
-pub use config::{AllocatorSpec, AotSpec, CompilerSpec, CompilerStrategy, FeatureSpec, RuntimeSpec};
+pub use callbacks::{
+    CallbackAbi, CallbackBrokerQueue, CallbackCompletion, CallbackError, CallbackPolicy,
+    CallbackReply, CallbackRequest, CallbackReturnPath, CallbackServicePlan, CallbackSet,
+    CallbackSpec, CallbackTicket, CallbackWakeStrategy, HostCallbackBroker, PendingCallback,
+};
+pub use component::{
+    ComponentCallRequest, ComponentItem, ComponentItemKind, ComponentSpec, WitCase, WitField,
+    WitType, WitValue, WitValueMismatch,
+};
+pub use config::{
+    AllocatorSpec, AotSpec, CompilerSpec, CompilerStrategy, FeatureSpec, RuntimeSpec,
+};
 pub use limits::Limits;
 pub use repl::{ReplProtocol, ReplRequest, ReplResult, ReplSession, ReplSpec};
-pub use runtime_objects::{Artifact, ArtifactInfo, Instance, Linker, Memory, MemoryDType, MemoryLayout, MemorySpan, Store};
+pub use runtime_objects::{
+    Artifact, ArtifactInfo, Instance, Linker, Memory, MemoryDType, MemoryLayout, MemorySpan, Store,
+};
 pub use wasi::{StdioMode, WasiPreopen, WasiSpec};
 
 /// Runtime handle placeholder.
@@ -59,5 +78,4 @@ mod tests {
         assert!(runtime.spec.features.component_model);
         assert!(runtime.spec.features.simd);
     }
-
 }

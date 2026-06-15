@@ -27,7 +27,10 @@
 \alias{wt_drain_callbacks}
 \alias{wt_enable_features}
 \alias{wt_exec}
+\alias{wt_exports}
 \alias{wt_free}
+\alias{wt_imports}
+\alias{wt_bindings}
 \alias{wt_limit_callbacks}
 \alias{wt_limit_fuel}
 \alias{wt_limit_instances}
@@ -83,7 +86,7 @@ wt_with_compiler(.x, strategy = c("auto", "cranelift", "winch"),
 wt_enable_features(.x, component_model = NULL, component_model_async = NULL,
   simd = NULL, relaxed_simd = NULL, relaxed_simd_deterministic = NULL,
   bulk_memory = NULL, multi_memory = NULL, memory64 = NULL, threads = NULL,
-  gc = NULL)
+  exceptions = NULL, legacy_exceptions = NULL, gc = NULL)
 wt_build_runtime(.x)
 wt_wasi()
 wt_limits()
@@ -91,6 +94,9 @@ wt_callbacks()
 wt_app(source, kind = c("auto", "module", "component", "artifact"))
 wt_prepare(.x)
 wt_instantiate(.x, store, linker)
+wt_imports(.x)
+wt_exports(.x)
+wt_bindings(.x)
 wt_call(.x, export, ..., .args = NULL)
 wt_call_async(.x, export, ..., .args = NULL)
 wt_await(.x, timeout_ms = NULL)
@@ -113,7 +119,7 @@ wt_webr_repl(source, runtime = NULL, wasi = NULL, limits = NULL,
 
 \item{parallel}{Whether compiler parallelism is enabled.}
 
-\item{component_model, component_model_async, simd, relaxed_simd, relaxed_simd_deterministic, bulk_memory, multi_memory, memory64, threads, gc}{Optional runtime feature toggles. \code{NULL} leaves the existing value unchanged.}
+\item{component_model, component_model_async, simd, relaxed_simd, relaxed_simd_deterministic, bulk_memory, multi_memory, memory64, threads, exceptions, legacy_exceptions, gc}{Optional runtime feature toggles. \code{NULL} leaves the existing value unchanged.}
 
 \item{export}{Guest export name.}
 
@@ -158,6 +164,12 @@ Rtinycc pattern: wake the R main thread with an input handler on POSIX and a
 message pump on Windows, while worker threads block only on native
 synchronization. \code{wt_drain_callbacks()} is therefore an advanced/test hook for
 unusual tight native loops, not part of normal examples.
+
+\code{wt_imports()}, \code{wt_exports()}, and \code{wt_bindings()} inspect the structural
+core Wasm ABI that the module itself declares. For core modules this reveals
+value types, memories, tables, globals, and tags; it does not infer pointer,
+string, array, handle, or ownership semantics unless a future WIT/custom
+metadata layer supplies that policy.
 
 A sandbox REPL is not a Wasmtime built-in. It is a protocol supplied by the
 guest, such as a component evaluator, stdio command loop, callback-backed

@@ -74,6 +74,16 @@ SEXP savvy_RwasmtimeNativeInstance_wasi_output__impl(SEXP self__) {
     return handle_result(res);
 }
 
+SEXP savvy_RwasmtimeNativeModule_exports__impl(SEXP self__) {
+    SEXP res = savvy_RwasmtimeNativeModule_exports__ffi(self__);
+    return handle_result(res);
+}
+
+SEXP savvy_RwasmtimeNativeModule_imports__impl(SEXP self__) {
+    SEXP res = savvy_RwasmtimeNativeModule_imports__ffi(self__);
+    return handle_result(res);
+}
+
 SEXP savvy_RwasmtimeNativeModule_instantiate__impl(SEXP self__, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms) {
     SEXP res = savvy_RwasmtimeNativeModule_instantiate__ffi(self__, c_arg__memory_bytes, c_arg__table_elements, c_arg__instances, c_arg__fuel, c_arg__wall_time_ms);
     return handle_result(res);
@@ -94,8 +104,8 @@ SEXP savvy_RwasmtimeNativeModule_serialize__impl(SEXP self__) {
     return handle_result(res);
 }
 
-SEXP savvy_RwasmtimeNativeRuntime_build__impl(SEXP c_arg__compiler_strategy, SEXP c_arg__opt_level, SEXP c_arg__parallel, SEXP c_arg__component_model, SEXP c_arg__component_model_async, SEXP c_arg__simd, SEXP c_arg__relaxed_simd, SEXP c_arg__relaxed_simd_deterministic, SEXP c_arg__bulk_memory, SEXP c_arg__multi_memory, SEXP c_arg__memory64, SEXP c_arg__threads, SEXP c_arg__gc) {
-    SEXP res = savvy_RwasmtimeNativeRuntime_build__ffi(c_arg__compiler_strategy, c_arg__opt_level, c_arg__parallel, c_arg__component_model, c_arg__component_model_async, c_arg__simd, c_arg__relaxed_simd, c_arg__relaxed_simd_deterministic, c_arg__bulk_memory, c_arg__multi_memory, c_arg__memory64, c_arg__threads, c_arg__gc);
+SEXP savvy_RwasmtimeNativeRuntime_build__impl(SEXP c_arg__compiler_strategy, SEXP c_arg__opt_level, SEXP c_arg__parallel, SEXP c_arg__component_model, SEXP c_arg__component_model_async, SEXP c_arg__simd, SEXP c_arg__relaxed_simd, SEXP c_arg__relaxed_simd_deterministic, SEXP c_arg__bulk_memory, SEXP c_arg__multi_memory, SEXP c_arg__memory64, SEXP c_arg__threads, SEXP c_arg__exceptions, SEXP c_arg__legacy_exceptions, SEXP c_arg__gc) {
+    SEXP res = savvy_RwasmtimeNativeRuntime_build__ffi(c_arg__compiler_strategy, c_arg__opt_level, c_arg__parallel, c_arg__component_model, c_arg__component_model_async, c_arg__simd, c_arg__relaxed_simd, c_arg__relaxed_simd_deterministic, c_arg__bulk_memory, c_arg__multi_memory, c_arg__memory64, c_arg__threads, c_arg__exceptions, c_arg__legacy_exceptions, c_arg__gc);
     return handle_result(res);
 }
 
@@ -143,11 +153,13 @@ static const R_CallMethodDef CallEntries[] = {
     {"savvy_RwasmtimeNativeInstance_memory_size__impl", (DL_FUNC) &savvy_RwasmtimeNativeInstance_memory_size__impl, 2},
     {"savvy_RwasmtimeNativeInstance_memory_write__impl", (DL_FUNC) &savvy_RwasmtimeNativeInstance_memory_write__impl, 4},
     {"savvy_RwasmtimeNativeInstance_wasi_output__impl", (DL_FUNC) &savvy_RwasmtimeNativeInstance_wasi_output__impl, 1},
+    {"savvy_RwasmtimeNativeModule_exports__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_exports__impl, 1},
+    {"savvy_RwasmtimeNativeModule_imports__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_imports__impl, 1},
     {"savvy_RwasmtimeNativeModule_instantiate__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_instantiate__impl, 6},
     {"savvy_RwasmtimeNativeModule_instantiate_callbacks__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_instantiate_callbacks__impl, 9},
     {"savvy_RwasmtimeNativeModule_instantiate_wasi_p1__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_instantiate_wasi_p1__impl, 16},
     {"savvy_RwasmtimeNativeModule_serialize__impl", (DL_FUNC) &savvy_RwasmtimeNativeModule_serialize__impl, 1},
-    {"savvy_RwasmtimeNativeRuntime_build__impl", (DL_FUNC) &savvy_RwasmtimeNativeRuntime_build__impl, 13},
+    {"savvy_RwasmtimeNativeRuntime_build__impl", (DL_FUNC) &savvy_RwasmtimeNativeRuntime_build__impl, 15},
     {"savvy_RwasmtimeNativeRuntime_call_core__impl", (DL_FUNC) &savvy_RwasmtimeNativeRuntime_call_core__impl, 9},
     {"savvy_RwasmtimeNativeRuntime_compile_core__impl", (DL_FUNC) &savvy_RwasmtimeNativeRuntime_compile_core__impl, 2},
     {"savvy_RwasmtimeNativeRuntime_component_exports__impl", (DL_FUNC) &savvy_RwasmtimeNativeRuntime_component_exports__impl, 2},

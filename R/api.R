@@ -12,7 +12,7 @@
 #'   wt_artifact_compatible wt_artifact_info wt_as_array wt_as_component wt_as_module wt_await
 #'   wt_build_runtime wt_call wt_call_async wt_callback_policy wt_callbacks wt_cancel
 #'   wt_compile wt_component wt_component_exports wt_component_imports wt_drain_callbacks wt_enable_features
-#'   wt_exec wt_free wt_limit_callbacks wt_limit_fuel wt_limit_instances wt_limit_memory
+#'   wt_exec wt_exports wt_free wt_imports wt_bindings wt_limit_callbacks wt_limit_fuel wt_limit_instances wt_limit_memory
 #'   wt_limit_tables wt_limit_wall_time wt_limits wt_link_callbacks wt_link_wasi wt_linker
 #'   wt_instantiate wt_memory wt_memory_grow wt_memory_read wt_memory_size wt_memory_view wt_memory_write
 #'   wt_new_session wt_poll wt_prepare wt_repl wt_repl_close wt_repl_eval
@@ -26,7 +26,7 @@
 #' @param strategy Compiler strategy.
 #' @param opt_level Compiler optimization level.
 #' @param parallel Whether compiler parallelism is enabled.
-#' @param component_model,component_model_async,simd,relaxed_simd,relaxed_simd_deterministic,bulk_memory,multi_memory,memory64,threads,gc Optional runtime feature toggles. `NULL` leaves the existing value unchanged.
+#' @param component_model,component_model_async,simd,relaxed_simd,relaxed_simd_deterministic,bulk_memory,multi_memory,memory64,threads,exceptions,legacy_exceptions,gc Optional runtime feature toggles. `NULL` leaves the existing value unchanged.
 #' @param export Guest export name.
 #' @param ... Additional arguments for the relevant verb.
 #' @param .args Explicit list of guest arguments.
@@ -44,7 +44,7 @@
 #' wt_enable_features(.x, component_model = NULL, component_model_async = NULL,
 #'   simd = NULL, relaxed_simd = NULL, relaxed_simd_deterministic = NULL,
 #'   bulk_memory = NULL, multi_memory = NULL, memory64 = NULL, threads = NULL,
-#'   gc = NULL)
+#'   exceptions = NULL, legacy_exceptions = NULL, gc = NULL)
 #' wt_build_runtime(.x)
 #' wt_wasi()
 #' wt_limits()
@@ -52,6 +52,9 @@
 #' wt_app(source, kind = c("auto", "module", "component", "artifact"))
 #' wt_prepare(.x)
 #' wt_instantiate(.x, store, linker)
+#' wt_imports(.x)
+#' wt_exports(.x)
+#' wt_bindings(.x)
 #' wt_call(.x, export, ..., .args = NULL)
 #' wt_call_async(.x, export, ..., .args = NULL)
 #' wt_await(.x, timeout_ms = NULL)
@@ -71,6 +74,12 @@
 #' message pump on Windows, while worker threads block only on native
 #' synchronization. `wt_drain_callbacks()` is therefore an advanced/test hook for
 #' unusual tight native loops, not part of normal examples.
+#'
+#' `wt_imports()`, `wt_exports()`, and `wt_bindings()` inspect the structural
+#' core Wasm ABI that the module itself declares. For core modules this reveals
+#' value types, memories, tables, globals, and tags; it does not infer pointer,
+#' string, array, handle, or ownership semantics unless a future WIT/custom
+#' metadata layer supplies that policy.
 #'
 #' A sandbox REPL is not a Wasmtime built-in. It is a protocol supplied by the
 #' guest, such as a component evaluator, stdio command loop, callback-backed
@@ -201,6 +210,8 @@ wt_runtime_spec <- function() {
       multi_memory = TRUE,
       memory64 = FALSE,
       threads = FALSE,
+      exceptions = FALSE,
+      legacy_exceptions = FALSE,
       gc = FALSE
     ),
     aot = list(cache = TRUE, cache_dir = NULL, artifact_dir = NULL),
@@ -238,6 +249,8 @@ wt_enable_features <- function(.x,
                                multi_memory = NULL,
                                memory64 = NULL,
                                threads = NULL,
+                               exceptions = NULL,
+                               legacy_exceptions = NULL,
                                gc = NULL) {
   wt_check(.x, "WtRuntimeSpec")
   .x$features <- wt_set_non_null(.x$features, list(
@@ -250,6 +263,8 @@ wt_enable_features <- function(.x,
     multi_memory = multi_memory,
     memory64 = memory64,
     threads = threads,
+    exceptions = exceptions,
+    legacy_exceptions = legacy_exceptions,
     gc = gc
   ))
   if (isTRUE(.x$features$component_model_async) && !isTRUE(.x$features$component_model)) {
@@ -260,6 +275,9 @@ wt_enable_features <- function(.x,
   }
   if (isTRUE(.x$features$relaxed_simd_deterministic) && !isTRUE(.x$features$relaxed_simd)) {
     stop("relaxed_simd_deterministic requires relaxed_simd = TRUE", call. = FALSE)
+  }
+  if (isTRUE(.x$features$legacy_exceptions) && !isTRUE(.x$features$exceptions)) {
+    stop("legacy_exceptions requires exceptions = TRUE", call. = FALSE)
   }
   .x
 }
@@ -290,20 +308,24 @@ wt_with_allocator <- function(.x,
 rwasmtime_runtime_ptr <- function(spec) {
   if (!exists("rwasmtime_backend_status", mode = "function")) return(NULL)
   if (!identical(rwasmtime_backend_status(), "native")) return(NULL)
-  RwasmtimeNativeRuntime$build(
-    compiler_strategy = spec$compiler$strategy,
-    opt_level = spec$compiler$opt_level,
-    parallel = isTRUE(spec$compiler$parallel),
-    component_model = isTRUE(spec$features$component_model),
-    component_model_async = isTRUE(spec$features$component_model_async),
-    simd = isTRUE(spec$features$simd),
-    relaxed_simd = isTRUE(spec$features$relaxed_simd),
-    relaxed_simd_deterministic = isTRUE(spec$features$relaxed_simd_deterministic),
-    bulk_memory = isTRUE(spec$features$bulk_memory),
-    multi_memory = isTRUE(spec$features$multi_memory),
-    memory64 = isTRUE(spec$features$memory64),
-    threads = isTRUE(spec$features$threads),
-    gc = isTRUE(spec$features$gc)
+  rwasmtime_with_runtime_build_errors(
+    RwasmtimeNativeRuntime$build(
+      compiler_strategy = spec$compiler$strategy,
+      opt_level = spec$compiler$opt_level,
+      parallel = isTRUE(spec$compiler$parallel),
+      component_model = isTRUE(spec$features$component_model),
+      component_model_async = isTRUE(spec$features$component_model_async),
+      simd = isTRUE(spec$features$simd),
+      relaxed_simd = isTRUE(spec$features$relaxed_simd),
+      relaxed_simd_deterministic = isTRUE(spec$features$relaxed_simd_deterministic),
+      bulk_memory = isTRUE(spec$features$bulk_memory),
+      multi_memory = isTRUE(spec$features$multi_memory),
+      memory64 = isTRUE(spec$features$memory64),
+      threads = isTRUE(spec$features$threads),
+      exceptions = isTRUE(spec$features$exceptions),
+      legacy_exceptions = isTRUE(spec$features$legacy_exceptions),
+      gc = isTRUE(spec$features$gc)
+    )
   )
 }
 
@@ -341,12 +363,24 @@ rwasmtime_call_core_module_wasi_p1 <- function(module, wasi, limits = NULL) {
   rwasmtime_wasi_result(instance$wasi_output(), wasi = wasi)
 }
 
+rwasmtime_module_input <- function(input) {
+  if (is.raw(input)) return(input)
+  if (!is.character(input) || length(input) != 1L || is.na(input)) {
+    stop("Wasm module input must be a character scalar or raw vector", call. = FALSE)
+  }
+  if (file.exists(input) && !dir.exists(input)) {
+    size <- file.info(input)$size
+    return(readBin(input, what = "raw", n = size))
+  }
+  input
+}
+
 rwasmtime_compile_core <- function(runtime, module) {
-  runtime$ptr$compile_core(as.character(module))
+  rwasmtime_with_compile_errors(runtime$ptr$compile_core(rwasmtime_module_input(module)))
 }
 
 rwasmtime_deserialize_core <- function(runtime, bytes) {
-  runtime$ptr$deserialize_core(bytes)
+  rwasmtime_with_compile_errors(runtime$ptr$deserialize_core(bytes))
 }
 
 rwasmtime_serialize_core_module <- function(artifact) {
@@ -367,36 +401,44 @@ rwasmtime_aot_compatible <- function(metadata, runtime) {
     identical(metadata$features, runtime$spec$features)
 }
 
-rwasmtime_stop_aot_incompatible <- function(message, metadata = NULL) {
+rwasmtime_stop_condition <- function(message, class, parent = NULL, ...) {
   cond <- structure(
-    list(message = message, call = NULL, metadata = metadata),
-    class = c("rwasmtime_aot_incompatible", "rwasmtime_error", "error", "condition")
+    c(list(message = message, call = NULL, parent = parent), list(...)),
+    class = c(class, "rwasmtime_error", "error", "condition")
   )
   stop(cond)
+}
+
+rwasmtime_stop_aot_incompatible <- function(message, metadata = NULL) {
+  rwasmtime_stop_condition(message, "rwasmtime_aot_incompatible", metadata = metadata)
+}
+
+rwasmtime_stop_compile_error <- function(err) {
+  rwasmtime_stop_condition(conditionMessage(err), "rwasmtime_compile_error", parent = err)
+}
+
+rwasmtime_stop_link_error <- function(err) {
+  rwasmtime_stop_condition(conditionMessage(err), "rwasmtime_link_error", parent = err)
+}
+
+rwasmtime_stop_instantiate_error <- function(err, class = "rwasmtime_instantiate_error") {
+  rwasmtime_stop_condition(conditionMessage(err), class, parent = err)
+}
+
+rwasmtime_stop_unsupported_feature <- function(err, class = character()) {
+  rwasmtime_stop_condition(conditionMessage(err), c("rwasmtime_unsupported_feature", class), parent = err)
 }
 
 rwasmtime_stop_callback_error <- function(err) {
-  cond <- structure(
-    list(message = conditionMessage(err), call = NULL, parent = err),
-    class = c("rwasmtime_callback_error", "rwasmtime_error", "error", "condition")
-  )
-  stop(cond)
+  rwasmtime_stop_condition(conditionMessage(err), "rwasmtime_callback_error", parent = err)
 }
 
 rwasmtime_stop_trap <- function(err) {
-  cond <- structure(
-    list(message = conditionMessage(err), call = NULL, parent = err),
-    class = c("rwasmtime_trap", "rwasmtime_error", "error", "condition")
-  )
-  stop(cond)
+  rwasmtime_stop_condition(conditionMessage(err), "rwasmtime_trap", parent = err)
 }
 
 rwasmtime_stop_timeout <- function(message, timeout_ms = NULL, job = NULL) {
-  cond <- structure(
-    list(message = message, call = NULL, timeout_ms = timeout_ms, job = job),
-    class = c("rwasmtime_timeout", "rwasmtime_error", "error", "condition")
-  )
-  stop(cond)
+  rwasmtime_stop_condition(message, "rwasmtime_timeout", timeout_ms = timeout_ms, job = job)
 }
 
 rwasmtime_validate_timeout_ms <- function(timeout_ms) {
@@ -423,6 +465,28 @@ rwasmtime_is_limit_error_message <- function(message) {
     grepl("resource limit exceeded", message, fixed = TRUE)
 }
 
+rwasmtime_is_unsupported_feature_message <- function(message) {
+  feature_words <- grepl("feature", message, fixed = TRUE) ||
+    grepl("proposal", message, fixed = TRUE) ||
+    grepl("exceptions", message, fixed = TRUE) ||
+    grepl("SIMD", message, ignore.case = TRUE)
+  feature_words && (
+    grepl("not supported", message, fixed = TRUE) ||
+      grepl("not enabled", message, fixed = TRUE) ||
+      grepl("required for", message, fixed = TRUE)
+  )
+}
+
+rwasmtime_is_link_error_message <- function(message) {
+  grepl("failed to link", message, fixed = TRUE) ||
+    grepl("missing R callback", message, fixed = TRUE) ||
+    grepl("callback import", message, fixed = TRUE) ||
+    grepl("provided but not imported", message, fixed = TRUE) ||
+    grepl("incompatible function signatures", message, fixed = TRUE) ||
+    (grepl("expected", message, fixed = TRUE) && grepl("imports", message, fixed = TRUE)) ||
+    grepl("unknown import", message, fixed = TRUE)
+}
+
 rwasmtime_limit_error_fields <- function(message) {
   memory <- regexec("requested ([0-9]+) bytes exceeds configured memory limit ([0-9]+) bytes", message, perl = TRUE)
   parts <- regmatches(message, memory)[[1L]]
@@ -443,6 +507,56 @@ rwasmtime_with_limit_errors <- function(expr) {
         rwasmtime_stop_limit_error(message, limit = fields$limit, requested = fields$requested, parent = err)
       }
       stop(err)
+    }
+  )
+}
+
+rwasmtime_with_runtime_build_errors <- function(expr) {
+  tryCatch(
+    force(expr),
+    error = function(err) {
+      if (inherits(err, "rwasmtime_error")) stop(err)
+      if (rwasmtime_is_unsupported_feature_message(conditionMessage(err))) {
+        rwasmtime_stop_unsupported_feature(err)
+      }
+      stop(err)
+    }
+  )
+}
+
+rwasmtime_with_compile_errors <- function(expr) {
+  tryCatch(
+    force(expr),
+    error = function(err) {
+      if (inherits(err, "rwasmtime_error")) stop(err)
+      if (rwasmtime_is_unsupported_feature_message(conditionMessage(err))) {
+        rwasmtime_stop_unsupported_feature(err, "rwasmtime_compile_error")
+      }
+      rwasmtime_stop_compile_error(err)
+    }
+  )
+}
+
+rwasmtime_with_instantiate_errors <- function(expr) {
+  tryCatch(
+    force(expr),
+    error = function(err) {
+      if (inherits(err, "rwasmtime_error")) stop(err)
+      message <- conditionMessage(err)
+      if (rwasmtime_is_limit_error_message(message)) {
+        fields <- rwasmtime_limit_error_fields(message)
+        rwasmtime_stop_limit_error(message, limit = fields$limit, requested = fields$requested, parent = err)
+      }
+      if (rwasmtime_is_unsupported_feature_message(message)) {
+        rwasmtime_stop_unsupported_feature(err, "rwasmtime_instantiate_error")
+      }
+      if (rwasmtime_is_link_error_message(message)) {
+        rwasmtime_stop_link_error(err)
+      }
+      if (grepl("R callback", message, fixed = TRUE)) {
+        rwasmtime_stop_callback_error(err)
+      }
+      rwasmtime_stop_instantiate_error(err)
     }
   )
 }
@@ -472,11 +586,11 @@ rwasmtime_with_wasm_call_errors <- function(expr) {
 rwasmtime_with_callback_errors <- rwasmtime_with_wasm_call_errors
 
 rwasmtime_instantiate_core <- function(runtime, module, limits = NULL) {
-  rwasmtime_with_limit_errors(do.call(runtime$ptr$instantiate_core, c(list(module = as.character(module)), rwasmtime_limit_args(limits))))
+  rwasmtime_with_instantiate_errors(do.call(runtime$ptr$instantiate_core, c(list(module = as.character(module)), rwasmtime_limit_args(limits))))
 }
 
 rwasmtime_instantiate_core_module <- function(module, limits = NULL) {
-  rwasmtime_with_limit_errors(do.call(module$ptr$instantiate, rwasmtime_limit_args(limits)))
+  rwasmtime_with_instantiate_errors(do.call(module$ptr$instantiate, rwasmtime_limit_args(limits)))
 }
 
 rwasmtime_instantiate_core_callbacks <- function(runtime, module, callbacks, limits = NULL) {
@@ -536,7 +650,7 @@ rwasmtime_core_callback_parts <- function(callbacks) {
 }
 
 rwasmtime_instantiate_core_module_callbacks <- function(module, callbacks, limits = NULL) {
-  rwasmtime_with_limit_errors(do.call(module$ptr$instantiate_callbacks, c(rwasmtime_core_callback_parts(callbacks), rwasmtime_limit_args(limits))))
+  rwasmtime_with_instantiate_errors(do.call(module$ptr$instantiate_callbacks, c(rwasmtime_core_callback_parts(callbacks), rwasmtime_limit_args(limits))))
 }
 
 rwasmtime_wasi_stdin_input <- function(wasi) {
@@ -573,7 +687,7 @@ rwasmtime_wasi_call_parts <- function(wasi) {
 }
 
 rwasmtime_instantiate_core_module_wasi_p1 <- function(module, wasi, limits = NULL) {
-  rwasmtime_with_limit_errors(do.call(module$ptr$instantiate_wasi_p1, c(rwasmtime_wasi_call_parts(wasi), rwasmtime_limit_args(limits))))
+  rwasmtime_with_instantiate_errors(do.call(module$ptr$instantiate_wasi_p1, c(rwasmtime_wasi_call_parts(wasi), rwasmtime_limit_args(limits))))
 }
 
 rwasmtime_call_instance_core <- function(instance, export, args) {
@@ -1068,7 +1182,7 @@ wt_build_runtime <- function(.x) {
 }
 
 rwasmtime_feature_line <- function(features) {
-  shown <- c("component_model", "simd", "relaxed_simd", "memory64", "threads")
+  shown <- c("component_model", "simd", "relaxed_simd", "memory64", "threads", "exceptions", "legacy_exceptions")
   shown <- shown[shown %in% names(features)]
   paste0(shown, "=", vapply(features[shown], as.character, character(1)), collapse = " ")
 }
@@ -1692,7 +1806,7 @@ print.WtArtifactInfo <- function(x, ...) {
     cat("  compiler: ", compiler$strategy, " opt=", compiler$opt_level, "\n", sep = "")
   }
   if (!is.null(features)) {
-    shown <- c("component_model", "simd", "relaxed_simd", "memory64", "threads")
+    shown <- c("component_model", "simd", "relaxed_simd", "memory64", "threads", "exceptions", "legacy_exceptions")
     shown <- shown[shown %in% names(features)]
     values <- paste0(shown, "=", vapply(features[shown], as.character, character(1)))
     cat("  features: ", paste(values, collapse = " "), "\n", sep = "")
@@ -1951,10 +2065,46 @@ print.WtJobStatus <- function(x, ...) {
 }
 
 #' @export
+wt_imports <- function(.x) {
+  if (rwasmtime_is_component_like(.x)) {
+    return(wt_component_imports(.x))
+  }
+  rwasmtime_native_core_items(.x, "imports")
+}
+
+#' @export
+wt_exports <- function(.x) {
+  if (rwasmtime_is_component_like(.x)) {
+    return(wt_component_exports(.x))
+  }
+  rwasmtime_native_core_items(.x, "exports")
+}
+
+#' @export
+wt_bindings <- function(.x) {
+  wt_new("WtBindings", imports = wt_imports(.x), exports = wt_exports(.x))
+}
+
+#' @export
 print.WtArtifact <- function(x, ...) {
   cat("<WtArtifact> kind=", x$kind, " backend=", if (is.null(x$backend)) "pending" else x$backend, "\n", sep = "")
   cat("  input: ", as.character(x$input)[1L], "\n", sep = "")
   if (!is.null(x$aot_path)) cat("  aot_path: ", x$aot_path, "\n", sep = "")
+  invisible(x)
+}
+
+#' @export
+print.WtCoreItem <- function(x, ...) {
+  qualifier <- if (!is.null(x$module)) paste0(x$module, "::") else ""
+  cat("<WtCoreItem> ", x$direction, " ", qualifier, x$name, " kind=", x$kind, sep = "")
+  if (!is.null(x$signature) && nzchar(x$signature)) cat(" ", x$signature, sep = "")
+  cat("\n")
+  invisible(x)
+}
+
+#' @export
+print.WtBindings <- function(x, ...) {
+  cat("<WtBindings> imports=", length(x$imports), " exports=", length(x$exports), "\n", sep = "")
   invisible(x)
 }
 
@@ -2190,6 +2340,55 @@ rwasmtime_component_items <- function(items) {
   })
 }
 
+rwasmtime_core_items <- function(items, direction = c("imports", "exports")) {
+  direction <- match.arg(direction)
+  lapply(items, function(item) {
+    wt_new(
+      "WtCoreItem",
+      direction = sub("s$", "", direction),
+      module = item$module,
+      name = item$name,
+      kind = item$kind,
+      params = item$params,
+      results = item$results,
+      minimum = item$minimum,
+      maximum = item$maximum,
+      shared = item$shared,
+      memory64 = item$memory64,
+      mutable = item$mutable,
+      element = item$element,
+      value_type = item$value_type,
+      signature = item$signature
+    )
+  })
+}
+
+rwasmtime_is_component_like <- function(.x) {
+  inherits(.x, "WtComponentSpec") ||
+    (inherits(.x, "WtAppSpec") && identical(.x$kind, "component")) ||
+    (inherits(.x, "WtPreparedApp") && (
+      inherits(.x$spec, "WtComponentSpec") ||
+        (inherits(.x$spec, "WtAppSpec") && identical(.x$spec$kind, "component"))
+    ))
+}
+
+rwasmtime_native_core_items <- function(.x, direction = c("imports", "exports")) {
+  direction <- match.arg(direction)
+  artifact <- NULL
+  if (rwasmtime_is_native_core_artifact(.x)) {
+    artifact <- .x
+  } else if (inherits(.x, "WtPreparedApp") && rwasmtime_is_native_core_artifact(.x$artifact)) {
+    artifact <- .x$artifact
+  } else if (inherits(.x, "WtAppSpec") && .x$kind %in% c("auto", "module") && inherits(.x$runtime, "WtRuntime")) {
+    artifact <- rwasmtime_prepare_artifact(.x)
+  }
+  if (!rwasmtime_is_native_core_artifact(artifact)) {
+    wt_not_implemented(paste0("wt_", direction, " for core modules"))
+  }
+  items <- if (identical(direction, "imports")) artifact$ptr$imports() else artifact$ptr$exports()
+  rwasmtime_core_items(items, direction)
+}
+
 rwasmtime_native_component_items <- function(.x, direction = c("exports", "imports")) {
   direction <- match.arg(direction)
   spec <- rwasmtime_component_spec(.x)
@@ -2199,9 +2398,9 @@ rwasmtime_native_component_items <- function(.x, direction = c("exports", "impor
   runtime <- spec$runtime
   if (inherits(runtime, "WtRuntime") && identical(runtime$backend, "native") && !is.null(runtime$ptr) && !inherits(spec$source, "WtArtifact")) {
     items <- if (identical(direction, "exports")) {
-      runtime$ptr$component_exports(as.character(spec$source))
+      rwasmtime_with_compile_errors(runtime$ptr$component_exports(as.character(spec$source)))
     } else {
-      runtime$ptr$component_imports(as.character(spec$source))
+      rwasmtime_with_compile_errors(runtime$ptr$component_imports(as.character(spec$source)))
     }
     return(rwasmtime_component_items(items))
   }

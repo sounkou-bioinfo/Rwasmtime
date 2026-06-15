@@ -113,6 +113,18 @@ class(`RwasmtimeNativeInstance`) <- c("Rwasmtime::RwasmtimeNativeInstance__bundl
 
 ### wrapper functions for RwasmtimeNativeModule
 
+`RwasmtimeNativeModule_exports` <- function(self) {
+  function() {
+    .Call(savvy_RwasmtimeNativeModule_exports__impl, `self`)
+  }
+}
+
+`RwasmtimeNativeModule_imports` <- function(self) {
+  function() {
+    .Call(savvy_RwasmtimeNativeModule_imports__impl, `self`)
+  }
+}
+
 `RwasmtimeNativeModule_instantiate` <- function(self) {
   function(`memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`) {
     .savvy_wrap_RwasmtimeNativeInstance(.Call(savvy_RwasmtimeNativeModule_instantiate__impl, `self`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`))
@@ -140,6 +152,8 @@ class(`RwasmtimeNativeInstance`) <- c("Rwasmtime::RwasmtimeNativeInstance__bundl
 `.savvy_wrap_RwasmtimeNativeModule` <- function(ptr) {
   e <- new.env(parent = emptyenv())
   e$.ptr <- ptr
+  e$`exports` <- `RwasmtimeNativeModule_exports`(ptr)
+  e$`imports` <- `RwasmtimeNativeModule_imports`(ptr)
   e$`instantiate` <- `RwasmtimeNativeModule_instantiate`(ptr)
   e$`instantiate_callbacks` <- `RwasmtimeNativeModule_instantiate_callbacks`(ptr)
   e$`instantiate_wasi_p1` <- `RwasmtimeNativeModule_instantiate_wasi_p1`(ptr)
@@ -231,8 +245,8 @@ class(`RwasmtimeNativeModule`) <- c("Rwasmtime::RwasmtimeNativeModule__bundle", 
 
 ### associated functions for RwasmtimeNativeRuntime
 
-`RwasmtimeNativeRuntime`$`build` <- function(`compiler_strategy`, `opt_level`, `parallel`, `component_model`, `component_model_async`, `simd`, `relaxed_simd`, `relaxed_simd_deterministic`, `bulk_memory`, `multi_memory`, `memory64`, `threads`, `gc`) {
-  .savvy_wrap_RwasmtimeNativeRuntime(.Call(savvy_RwasmtimeNativeRuntime_build__impl, `compiler_strategy`, `opt_level`, `parallel`, `component_model`, `component_model_async`, `simd`, `relaxed_simd`, `relaxed_simd_deterministic`, `bulk_memory`, `multi_memory`, `memory64`, `threads`, `gc`))
+`RwasmtimeNativeRuntime`$`build` <- function(`compiler_strategy`, `opt_level`, `parallel`, `component_model`, `component_model_async`, `simd`, `relaxed_simd`, `relaxed_simd_deterministic`, `bulk_memory`, `multi_memory`, `memory64`, `threads`, `exceptions`, `legacy_exceptions`, `gc`) {
+  .savvy_wrap_RwasmtimeNativeRuntime(.Call(savvy_RwasmtimeNativeRuntime_build__impl, `compiler_strategy`, `opt_level`, `parallel`, `component_model`, `component_model_async`, `simd`, `relaxed_simd`, `relaxed_simd_deterministic`, `bulk_memory`, `multi_memory`, `memory64`, `threads`, `exceptions`, `legacy_exceptions`, `gc`))
 }
 
 

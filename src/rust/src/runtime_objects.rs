@@ -36,11 +36,17 @@ impl Artifact {
         if store.runtime != self.runtime || linker.runtime != self.runtime {
             return Err(RwasmtimeError {
                 kind: crate::app::RwasmtimeErrorKind::InvalidArgument,
-                message: "artifact, store, and linker must come from compatible runtime specs".to_string(),
+                message: "artifact, store, and linker must come from compatible runtime specs"
+                    .to_string(),
             });
         }
-        self.metadata.ensure_compatible_with_spec(&store.runtime, self.kind)?;
-        Ok(Instance { artifact: self.clone(), store, linker })
+        self.metadata
+            .ensure_compatible_with_spec(&store.runtime, self.kind)?;
+        Ok(Instance {
+            artifact: self.clone(),
+            store,
+            linker,
+        })
     }
 }
 
@@ -88,7 +94,9 @@ pub struct Instance {
 
 impl Instance {
     pub fn call(&self, export: &str, _args: Vec<Value>) -> Result<Value> {
-        Err(RwasmtimeError::not_implemented(format!("wt_call({export})")))
+        Err(RwasmtimeError::not_implemented(format!(
+            "wt_call({export})"
+        )))
     }
 
     pub fn memory(&self, name: impl Into<String>) -> Memory {
@@ -142,14 +150,28 @@ pub struct MemorySpan {
 
 impl MemorySpan {
     pub fn new(ptr: u64, len: u64, dtype: MemoryDType) -> Self {
-        Self { ptr, len, dtype, dim: None, layout: MemoryLayout::Contiguous }
+        Self {
+            ptr,
+            len,
+            dtype,
+            dim: None,
+            layout: MemoryLayout::Contiguous,
+        }
     }
 
-    pub fn dim(mut self, value: Vec<u64>) -> Self { self.dim = Some(value); self }
-    pub fn layout(mut self, value: MemoryLayout) -> Self { self.layout = value; self }
+    pub fn dim(mut self, value: Vec<u64>) -> Self {
+        self.dim = Some(value);
+        self
+    }
+    pub fn layout(mut self, value: MemoryLayout) -> Self {
+        self.layout = value;
+        self
+    }
 
     pub fn end(&self) -> Result<u64> {
-        self.ptr.checked_add(self.len).ok_or_else(|| RwasmtimeError::invalid_argument("memory span overflows address space"))
+        self.ptr
+            .checked_add(self.len)
+            .ok_or_else(|| RwasmtimeError::invalid_argument("memory span overflows address space"))
     }
 
     pub fn element_count(&self) -> Option<u64> {
@@ -194,7 +216,8 @@ impl MemorySpan {
 
 fn product_dims(dim: Option<&[u64]>) -> Option<u64> {
     let dim = dim?;
-    dim.iter().try_fold(1_u64, |acc, value| acc.checked_mul(*value))
+    dim.iter()
+        .try_fold(1_u64, |acc, value| acc.checked_mul(*value))
 }
 
 impl Memory {
@@ -216,7 +239,8 @@ impl Memory {
         if bytes.len() as u64 != span.len {
             return Err(RwasmtimeError::invalid_argument(format!(
                 "memory write payload has {} bytes but span length is {} bytes",
-                bytes.len(), span.len
+                bytes.len(),
+                span.len
             )));
         }
         Err(RwasmtimeError::not_implemented("wt_memory_write"))
@@ -244,12 +268,26 @@ impl Runtime {
         }
     }
 
-    pub fn store(&self, limits: Option<Limits>, wasi: Option<WasiSpec>, callbacks: Option<CallbackSet>) -> Store {
-        Store { runtime: self.spec.clone(), limits, wasi, callbacks }
+    pub fn store(
+        &self,
+        limits: Option<Limits>,
+        wasi: Option<WasiSpec>,
+        callbacks: Option<CallbackSet>,
+    ) -> Store {
+        Store {
+            runtime: self.spec.clone(),
+            limits,
+            wasi,
+            callbacks,
+        }
     }
 
     pub fn linker(&self) -> Linker {
-        Linker { runtime: self.spec.clone(), wasi: None, callbacks: None }
+        Linker {
+            runtime: self.spec.clone(),
+            wasi: None,
+            callbacks: None,
+        }
     }
 }
 
@@ -270,15 +308,32 @@ mod tests {
             .build();
         let wasi = WasiSpec::new().arg("--version");
         let callbacks = CallbackSet::new().callback(CallbackSpec::core("r", "score_f64"));
-        let artifact = runtime.compile("add.wasm", SourceKind::Module).aot_save("add.cwasm");
-        let store = runtime.store(Some(Limits::new().memory_bytes(64 * 1024 * 1024)), Some(wasi.clone()), None);
+        let artifact = runtime
+            .compile("add.wasm", SourceKind::Module)
+            .aot_save("add.cwasm");
+        let store = runtime.store(
+            Some(Limits::new().memory_bytes(64 * 1024 * 1024)),
+            Some(wasi.clone()),
+            None,
+        );
         let linker = runtime.linker().link_wasi(wasi).link_callbacks(callbacks);
-        let instance = artifact.instantiate(store, linker).expect("runtime specs match");
+        let instance = artifact
+            .instantiate(store, linker)
+            .expect("runtime specs match");
 
-        assert_eq!(instance.artifact.info().aot_path.as_deref(), Some("add.cwasm"));
+        assert_eq!(
+            instance.artifact.info().aot_path.as_deref(),
+            Some("add.cwasm")
+        );
         assert!(instance.artifact.compatible_with(&runtime));
-        assert_eq!(instance.store.limits.as_ref().and_then(|l| l.memory_bytes), Some(64 * 1024 * 1024));
-        assert_eq!(instance.linker.callbacks.as_ref().map(|c| c.imports.len()), Some(1));
+        assert_eq!(
+            instance.store.limits.as_ref().and_then(|l| l.memory_bytes),
+            Some(64 * 1024 * 1024)
+        );
+        assert_eq!(
+            instance.linker.callbacks.as_ref().map(|c| c.imports.len()),
+            Some(1)
+        );
     }
 
     #[test]
@@ -289,12 +344,16 @@ mod tests {
         let linker = runtime.linker();
         let instance = artifact.instantiate(store, linker).unwrap();
 
-        let call_err = instance.call("add", vec![Value::I32(1), Value::I32(2)]).unwrap_err();
+        let call_err = instance
+            .call("add", vec![Value::I32(1), Value::I32(2)])
+            .unwrap_err();
         assert_eq!(call_err.kind, RwasmtimeErrorKind::NotImplemented);
         assert!(call_err.message.contains("wt_call(add)"));
 
         let memory = instance.memory("memory");
-        let span = MemorySpan::new(1024, 16, MemoryDType::F64).dim(vec![2]).layout(MemoryLayout::ColumnMajor);
+        let span = MemorySpan::new(1024, 16, MemoryDType::F64)
+            .dim(vec![2])
+            .layout(MemoryLayout::ColumnMajor);
         assert_eq!(span.expected_len_bytes(), Some(16));
         let read_err = memory.read(&span).unwrap_err();
         assert_eq!(read_err.kind, RwasmtimeErrorKind::NotImplemented);
@@ -318,7 +377,9 @@ mod tests {
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
         assert!(err.message.contains("not a multiple"));
 
-        let memory = Memory { name: "memory".to_string() };
+        let memory = Memory {
+            name: "memory".to_string(),
+        };
         let err = memory.write(&span, &[0; 8]).unwrap_err();
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
         assert!(err.message.contains("payload"));

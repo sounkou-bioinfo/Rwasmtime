@@ -82,7 +82,7 @@ rt <- wt_runtime_spec() |>
 rt
 #> <WtRuntime> backend=native
 #>   compiler: cranelift opt=speed parallel=TRUE
-#>   features: component_model=TRUE simd=TRUE relaxed_simd=FALSE memory64=FALSE threads=FALSE
+#>   features: component_model=TRUE simd=TRUE relaxed_simd=FALSE memory64=FALSE threads=FALSE exceptions=FALSE legacy_exceptions=FALSE
 ```
 
 A minimal core Wasm call is just a module source, a runtime,
@@ -105,12 +105,7 @@ add_app <- wt_app(add_wat) |>
   wt_with_runtime(rt) |>
   wt_prepare()
 
-add_result <- tryCatch(
-  add_app |> wt_call("add", 20L, 22L),
-  error = identity
-)
-
-wt_readme_result(add_result)
+add_app |> wt_call("add", 20L, 22L)
 #> [1] 42
 ```
 
@@ -170,18 +165,46 @@ callbacks <- wt_callbacks() |>
     abi = "core"
   )
 
-callback_result <- tryCatch({
-  callback_instance <- rt |>
-    wt_compile(callback_wat, kind = "module") |>
-    wt_instantiate(
-      store = rt |> wt_store(),
-      linker = rt |> wt_linker() |> wt_link_callbacks(callbacks)
-    )
-  callback_instance |> wt_call("run", 1L)
-}, error = identity)
+callback_artifact <- rt |>
+  wt_compile(callback_wat, kind = "module")
 
-wt_readme_result(callback_result)
+callback_instance <- callback_artifact |>
+  wt_instantiate(
+    store = rt |> wt_store(),
+    linker = rt |> wt_linker() |> wt_link_callbacks(callbacks)
+  )
+
+callback_instance |> wt_call("run", 1L)
 #> [1] 42
+```
+
+Structural binding metadata can be extracted from a compiled core
+artifact. This is the declarative skeleton: it shows functions,
+memories, tables, globals, tags, and Wasm value types, but it does not
+infer that an `i32` is a pointer, string, array handle, or owned
+resource.
+
+``` r
+wt_item_table <- function(items) {
+  data.frame(
+    direction = vapply(items, `[[`, character(1), "direction"),
+    module = vapply(items, function(x) if (is.null(x$module)) "" else x$module, character(1)),
+    name = vapply(items, `[[`, character(1), "name"),
+    kind = vapply(items, `[[`, character(1), "kind"),
+    signature = vapply(items, `[[`, character(1), "signature"),
+    row.names = NULL
+  )
+}
+
+wt_item_table(callback_artifact |> wt_imports())
+#>   direction module    name     kind      signature
+#> 1    import      r add_one function (i32) -> (i32)
+wt_item_table(callback_artifact |> wt_exports())
+#>   direction module name     kind      signature
+#> 1    export         run function (i32) -> (i32)
+
+callback_artifact |> wt_bindings()
+#> <WtBindings> imports=1 exports=1
 ```
 
 The same objects compose into higher-level app specs. Component/WIT
@@ -202,8 +225,7 @@ plugin <- wt_app(add_wat) |>
 
 plugin
 #> <WtPreparedApp> kind=module backend=native artifact=TRUE
-plugin_result <- tryCatch(plugin |> wt_call("add", 20L, 22L), error = identity)
-wt_readme_result(plugin_result)
+plugin |> wt_call("add", 20L, 22L)
 #> [1] 42
 ```
 
@@ -221,8 +243,7 @@ job <- plugin |>
 wt_poll(job)
 #> <WtJobStatus> export=add state=done done=TRUE cancelled=FALSE error=FALSE
 
-awaited <- tryCatch(job |> wt_await(), error = identity)
-wt_readme_result(awaited)
+job |> wt_await()
 #> [1] 42
 ```
 
@@ -268,7 +289,7 @@ wt_readme_stable_print(artifact |> wt_artifact_info())
 #>   input: stats_plugin.component.wasm
 #>   aot_path: <tempdir>/stats_plugin.cwasm
 #>   compiler: cranelift opt=speed
-#>   features: component_model=TRUE simd=TRUE relaxed_simd=FALSE memory64=FALSE threads=FALSE
+#>   features: component_model=TRUE simd=TRUE relaxed_simd=FALSE memory64=FALSE threads=FALSE exceptions=FALSE legacy_exceptions=FALSE
 
 plugin_from_artifact <- wt_app(artifact) |>
   wt_with_runtime(rt) |>
@@ -294,18 +315,14 @@ add_wat <- '
     i32.add))
 '
 
-aot_out <- tryCatch({
-  path <- file.path(tempdir(), "add.cwasm")
-  artifact <- rt |>
-    wt_compile(add_wat, kind = "module") |>
-    wt_aot_save(path, overwrite = TRUE)
-  loaded <- rt |> wt_aot_load(path)
-  instance <- loaded |>
-    wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker())
-  instance |> wt_call("add", 20L, 22L)
-}, error = identity)
-
-wt_readme_result(aot_out)
+path <- file.path(tempdir(), "add.cwasm")
+artifact <- rt |>
+  wt_compile(add_wat, kind = "module") |>
+  wt_aot_save(path, overwrite = TRUE)
+loaded <- rt |> wt_aot_load(path)
+instance <- loaded |>
+  wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker())
+instance |> wt_call("add", 20L, 22L)
 #> [1] 42
 ```
 
@@ -328,17 +345,13 @@ echo_wasi_wat <- '
       (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 16)))))
 '
 
-wasi_out <- tryCatch({
-  wasi_artifact <- rt |> wt_compile(echo_wasi_wat, kind = "module")
-  wasi_linker <- rt |>
-    wt_linker() |>
-    wt_link_wasi(wt_wasi() |> wt_wasi_stdio(stdout = "capture", stderr = "capture"))
-  wasi_instance <- wasi_artifact |>
-    wt_instantiate(store = rt |> wt_store(), linker = wasi_linker)
-  wasi_instance |> wt_call("_start")
-}, error = identity)
-
-wt_readme_result(wasi_out)
+wasi_artifact <- rt |> wt_compile(echo_wasi_wat, kind = "module")
+wasi_linker <- rt |>
+  wt_linker() |>
+  wt_link_wasi(wt_wasi() |> wt_wasi_stdio(stdout = "capture", stderr = "capture"))
+wasi_instance <- wasi_artifact |>
+  wt_instantiate(store = rt |> wt_store(), linker = wasi_linker)
+wasi_instance |> wt_call("_start")
 #> <WtWasiResult> stdout_bytes=16 stderr_bytes=0
 #>   stdout: hello from wasi
 ```
@@ -355,21 +368,15 @@ lanes on persistent core-module sessions.
 session <- plugin |>
   wt_new_session()
 
-err <- tryCatch(
-  session |>
-    wt_array_write(
-      c(1, 2, 3),
-      dtype = "f64",
-      layout = "column-major",
-      allocator = "guest"
-    ),
-  error = identity
-)
-
-class(err)[1]
-#> [1] "simpleError"
-conditionMessage(err)
-#> [1] "failed to resolve memory export `memory`"
+session |>
+  wt_array_write(
+    c(1, 2, 3),
+    dtype = "f64",
+    layout = "column-major",
+    allocator = "guest"
+  )
+#> Error:
+#> ! failed to resolve memory export `memory`
 ```
 
 In native backend builds, memory operations share state with repeated
@@ -391,23 +398,18 @@ memory_wat <- '
     i32.store8))
 '
 
-memory_out <- tryCatch({
-  session <- wt_app(memory_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_new_session()
+session <- wt_app(memory_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_new_session()
 
-  mem <- session |> wt_memory("memory")
-  mem <- mem |> wt_memory_write(ptr = 1, value = charToRaw("Z"), dtype = "u8")
-  list(
-    bytes = rawToChar(mem |> wt_memory_read(ptr = 0, length = 3, dtype = "u8")),
-    load8 = session |> wt_call("load8", 1L)
-  )
-}, error = identity)
-
-memory_print <- wt_readme_result(memory_out)
-if (is.list(memory_print)) as.data.frame(memory_print) else memory_print
+mem <- session |> wt_memory("memory")
+mem <- mem |> wt_memory_write(ptr = 1, value = charToRaw("Z"), dtype = "u8")
+as.data.frame(list(
+  bytes = rawToChar(mem |> wt_memory_read(ptr = 0, length = 3, dtype = "u8")),
+  load8 = session |> wt_call("load8", 1L)
+))
 #>   bytes load8
 #> 1   aZc    90
 ```
@@ -457,22 +459,15 @@ array_wat <- '
     local.get $sum))
 '
 
-array_out <- tryCatch({
-  session <- wt_app(array_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_new_session()
-  xs <- session |> wt_array_write(c(1.5, 2.25, 3.25), dtype = "f64")
-  list(values = wt_as_array(xs), sum = session |> wt_call("sum_f64", xs$ptr, xs$length))
-}, error = identity)
-
-array_print <- wt_readme_result(array_out)
-if (is.list(array_print)) as.data.frame(array_print) else array_print
-#>   values sum
-#> 1   1.50   7
-#> 2   2.25   7
-#> 3   3.25   7
+session <- wt_app(array_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_new_session()
+xs <- session |> wt_array_write(c(1.5, 2.25, 3.25), dtype = "f64")
+as.data.frame(list(values = I(list(wt_as_array(xs))), sum = session |> wt_call("sum_f64", xs$ptr, xs$length)))
+#>         values sum
+#> 1 1.5, 2.2....   7
 ```
 
 ## Sandbox REPL, including a webR guest
@@ -515,17 +510,26 @@ webr |> wt_repl_info()
 #> <WtReplInfo> protocol=component guest=webR backend=pending open=TRUE inputs=0
 #>   eval_export: webr:host/repl.eval
 
-err <- tryCatch(webr |> wt_repl_eval("1 + 1"), error = identity)
-class(err)[1]
-#> [1] "rwasmtime_not_implemented"
-conditionMessage(err)
-#> [1] "wt_repl_eval protocol=component is not implemented for this Rwasmtime build or API path"
+webr |> wt_repl_eval("1 + 1")
+#> Error:
+#> ! wt_repl_eval protocol=component is not implemented for this Rwasmtime build or API path
 ```
 
 Native backend builds already support the core-memory protocol for
 guests that choose that ABI: an exported memory, an input allocation
 path, an `eval(ptr, len)` export, and explicit
 result/stdout/stderr/error/status exports.
+
+A useful real target is Simon Willison’s
+[`micropython-wasm`](https://github.com/simonw/micropython-wasm), which
+ships a WASI MicroPython artifact for Wasmtime. It validates the same
+high-level shape: run MicroPython as a guest, pass source through
+explicit host/guest channels, capture stdout/stderr, and keep state in a
+persistent session. Current Rwasmtime cannot run that artifact yet
+because it uses Wasm exception handling and imports custom
+`micropython_wasm.host_call` / `host_result_cap` functions in addition
+to WASI. That makes it an honest next integration test once
+`exceptions = TRUE` and typed custom host imports are implemented.
 
 ``` r
 core_repl_wat <- '
@@ -551,23 +555,20 @@ core_repl_wat <- '
   (func (export "result_len") (result i32) global.get $result_len))
 '
 
-repl_out <- tryCatch({
-  repl <- wt_app(core_repl_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_repl(
-      protocol = "core",
-      eval_export = "repl_eval",
-      memory = "memory",
-      alloc_export = "alloc",
-      result_ptr_export = "result_ptr",
-      result_len_export = "result_len"
-    )
-  (repl |> wt_repl_eval("1 + 1"))$value
-}, error = identity)
+repl <- wt_app(core_repl_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_repl(
+    protocol = "core",
+    eval_export = "repl_eval",
+    memory = "memory",
+    alloc_export = "alloc",
+    result_ptr_export = "result_ptr",
+    result_len_export = "result_len"
+  )
 
-wt_readme_result(repl_out)
+(repl |> wt_repl_eval("1 + 1"))$value
 #> [1] "ok"
 ```
 

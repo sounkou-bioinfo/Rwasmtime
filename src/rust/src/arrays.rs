@@ -83,16 +83,22 @@ impl ArrayWriteRequest {
 
     pub fn validate(&self) -> Result<()> {
         if self.alloc_export.is_empty() {
-            return Err(RwasmtimeError::invalid_argument("array allocation export must not be empty"));
+            return Err(RwasmtimeError::invalid_argument(
+                "array allocation export must not be empty",
+            ));
         }
         if self.free_export.is_empty() {
-            return Err(RwasmtimeError::invalid_argument("array free export must not be empty"));
+            return Err(RwasmtimeError::invalid_argument(
+                "array free export must not be empty",
+            ));
         }
         let width = self.dtype.byte_width();
         if (self.bytes.len() as u64) % width != 0 {
             return Err(RwasmtimeError::invalid_argument(format!(
                 "array byte length {} is not a multiple of {} for {:?}",
-                self.bytes.len(), width, self.dtype
+                self.bytes.len(),
+                width,
+                self.dtype
             )));
         }
         if let Some(expected) = self.expected_len_bytes() {
@@ -109,7 +115,8 @@ impl ArrayWriteRequest {
 
 fn product_dims(dim: Option<&[u64]>) -> Option<u64> {
     let dim = dim?;
-    dim.iter().try_fold(1_u64, |acc, value| acc.checked_mul(*value))
+    dim.iter()
+        .try_fold(1_u64, |acc, value| acc.checked_mul(*value))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,7 +165,14 @@ impl Memory {
         mutable: bool,
         lifetime: MemoryViewLifetime,
     ) -> MemoryView {
-        MemoryView { memory_name: self.name.clone(), ptr, len, dtype, mutable, lifetime }
+        MemoryView {
+            memory_name: self.name.clone(),
+            ptr,
+            len,
+            dtype,
+            mutable,
+            lifetime,
+        }
     }
 }
 
@@ -214,7 +228,10 @@ mod tests {
 
     #[test]
     fn session_array_write_fails_honestly_until_memory_transport_lands() {
-        let session = AppSpec::new("stats_plugin.component.wasm").component().prepare().new_session();
+        let session = AppSpec::new("stats_plugin.component.wasm")
+            .component()
+            .prepare()
+            .new_session();
         let err = session
             .array_write(ArrayWriteRequest::new(vec![0; 8], ArrayDType::F64))
             .expect_err("array transport is backend work");
@@ -225,8 +242,16 @@ mod tests {
 
     #[test]
     fn borrowed_memory_view_carries_visible_lifetime() {
-        let memory = Memory { name: "memory".to_string() };
-        let view = memory.view(1024, 1000, MemoryDType::F64, false, MemoryViewLifetime::UntilNextWasmCall);
+        let memory = Memory {
+            name: "memory".to_string(),
+        };
+        let view = memory.view(
+            1024,
+            1000,
+            MemoryDType::F64,
+            false,
+            MemoryViewLifetime::UntilNextWasmCall,
+        );
 
         assert_eq!(view.memory_name, "memory");
         assert_eq!(view.ptr, 1024);

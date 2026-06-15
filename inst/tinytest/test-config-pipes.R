@@ -27,6 +27,13 @@ err <- tryCatch(wt_runtime_spec() |> wt_enable_features(simd = FALSE, relaxed_si
 expect_equal(conditionMessage(err), "relaxed_simd requires simd = TRUE")
 err <- tryCatch(wt_runtime_spec() |> wt_enable_features(component_model = FALSE, component_model_async = TRUE), error = identity)
 expect_equal(conditionMessage(err), "component_model_async requires component_model = TRUE")
+
+exceptions <- wt_runtime_spec() |>
+  wt_enable_features(exceptions = TRUE, legacy_exceptions = TRUE)
+expect_true(exceptions$features$exceptions)
+expect_true(exceptions$features$legacy_exceptions)
+err <- tryCatch(wt_runtime_spec() |> wt_enable_features(legacy_exceptions = TRUE), error = identity)
+expect_equal(conditionMessage(err), "legacy_exceptions requires exceptions = TRUE")
 err <- tryCatch(wt_runtime_spec() |> wt_with_compiler("winch", opt_level = "speed"), error = identity)
 expect_equal(conditionMessage(err), "winch compiler requires opt_level = 'none'")
 

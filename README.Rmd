@@ -6,13 +6,6 @@ output: github_document
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
-wt_readme_result <- function(x) {
-  if (inherits(x, "error")) {
-    paste(class(x)[1], conditionMessage(x), sep = ": ")
-  } else {
-    x
-  }
-}
 wt_readme_stable_print <- function(x) {
   lines <- capture.output(print(x))
   tmp <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
@@ -117,12 +110,7 @@ add_app <- wt_app(add_wat) |>
   wt_with_runtime(rt) |>
   wt_prepare()
 
-add_result <- tryCatch(
-  add_app |> wt_call("add", 20L, 22L),
-  error = identity
-)
-
-wt_readme_result(add_result)
+add_app |> wt_call("add", 20L, 22L)
 ```
 
 WASI and limits are separate capability objects. Nothing is inherited silently.
@@ -173,17 +161,39 @@ callbacks <- wt_callbacks() |>
     abi = "core"
   )
 
-callback_result <- tryCatch({
-  callback_instance <- rt |>
-    wt_compile(callback_wat, kind = "module") |>
-    wt_instantiate(
-      store = rt |> wt_store(),
-      linker = rt |> wt_linker() |> wt_link_callbacks(callbacks)
-    )
-  callback_instance |> wt_call("run", 1L)
-}, error = identity)
+callback_artifact <- rt |>
+  wt_compile(callback_wat, kind = "module")
 
-wt_readme_result(callback_result)
+callback_instance <- callback_artifact |>
+  wt_instantiate(
+    store = rt |> wt_store(),
+    linker = rt |> wt_linker() |> wt_link_callbacks(callbacks)
+  )
+
+callback_instance |> wt_call("run", 1L)
+```
+
+Structural binding metadata can be extracted from a compiled core artifact. This
+is the declarative skeleton: it shows functions, memories, tables, globals, tags,
+and Wasm value types, but it does not infer that an `i32` is a pointer, string,
+array handle, or owned resource.
+
+```{r binding-introspection}
+wt_item_table <- function(items) {
+  data.frame(
+    direction = vapply(items, `[[`, character(1), "direction"),
+    module = vapply(items, function(x) if (is.null(x$module)) "" else x$module, character(1)),
+    name = vapply(items, `[[`, character(1), "name"),
+    kind = vapply(items, `[[`, character(1), "kind"),
+    signature = vapply(items, `[[`, character(1), "signature"),
+    row.names = NULL
+  )
+}
+
+wt_item_table(callback_artifact |> wt_imports())
+wt_item_table(callback_artifact |> wt_exports())
+
+callback_artifact |> wt_bindings()
 ```
 
 The same objects compose into higher-level app specs. Component/WIT calls will
@@ -203,8 +213,7 @@ plugin <- wt_app(add_wat) |>
   wt_prepare()
 
 plugin
-plugin_result <- tryCatch(plugin |> wt_call("add", 20L, 22L), error = identity)
-wt_readme_result(plugin_result)
+plugin |> wt_call("add", 20L, 22L)
 ```
 
 ## Async and callback servicing
@@ -219,8 +228,7 @@ job <- plugin |>
 
 wt_poll(job)
 
-awaited <- tryCatch(job |> wt_await(), error = identity)
-wt_readme_result(awaited)
+job |> wt_await()
 ```
 
 Manual polling can still stay pipeable, but it should not expose callback
@@ -282,18 +290,14 @@ add_wat <- '
     i32.add))
 '
 
-aot_out <- tryCatch({
-  path <- file.path(tempdir(), "add.cwasm")
-  artifact <- rt |>
-    wt_compile(add_wat, kind = "module") |>
-    wt_aot_save(path, overwrite = TRUE)
-  loaded <- rt |> wt_aot_load(path)
-  instance <- loaded |>
-    wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker())
-  instance |> wt_call("add", 20L, 22L)
-}, error = identity)
-
-wt_readme_result(aot_out)
+path <- file.path(tempdir(), "add.cwasm")
+artifact <- rt |>
+  wt_compile(add_wat, kind = "module") |>
+  wt_aot_save(path, overwrite = TRUE)
+loaded <- rt |> wt_aot_load(path)
+instance <- loaded |>
+  wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker())
+instance |> wt_call("add", 20L, 22L)
 ```
 
 Low-level WASIp1 imports are linked by putting an explicit `WtWasi` object on the
@@ -315,17 +319,13 @@ echo_wasi_wat <- '
       (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 16)))))
 '
 
-wasi_out <- tryCatch({
-  wasi_artifact <- rt |> wt_compile(echo_wasi_wat, kind = "module")
-  wasi_linker <- rt |>
-    wt_linker() |>
-    wt_link_wasi(wt_wasi() |> wt_wasi_stdio(stdout = "capture", stderr = "capture"))
-  wasi_instance <- wasi_artifact |>
-    wt_instantiate(store = rt |> wt_store(), linker = wasi_linker)
-  wasi_instance |> wt_call("_start")
-}, error = identity)
-
-wt_readme_result(wasi_out)
+wasi_artifact <- rt |> wt_compile(echo_wasi_wat, kind = "module")
+wasi_linker <- rt |>
+  wt_linker() |>
+  wt_link_wasi(wt_wasi() |> wt_wasi_stdio(stdout = "capture", stderr = "capture"))
+wasi_instance <- wasi_artifact |>
+  wt_instantiate(store = rt |> wt_store(), linker = wasi_linker)
+wasi_instance |> wt_call("_start")
 ```
 
 ## Linear memory and arrays
@@ -336,23 +336,17 @@ must carry an explicit lifetime. Native backend builds expose copied
 linear-memory transport for raw bytes and typed numeric lanes on persistent
 core-module sessions.
 
-```{r memory-array-shape}
+```{r memory-array-shape, error=TRUE}
 session <- plugin |>
   wt_new_session()
 
-err <- tryCatch(
-  session |>
-    wt_array_write(
-      c(1, 2, 3),
-      dtype = "f64",
-      layout = "column-major",
-      allocator = "guest"
-    ),
-  error = identity
-)
-
-class(err)[1]
-conditionMessage(err)
+session |>
+  wt_array_write(
+    c(1, 2, 3),
+    dtype = "f64",
+    layout = "column-major",
+    allocator = "guest"
+  )
 ```
 
 In native backend builds, memory operations share state with repeated calls on
@@ -374,23 +368,18 @@ memory_wat <- '
     i32.store8))
 '
 
-memory_out <- tryCatch({
-  session <- wt_app(memory_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_new_session()
+session <- wt_app(memory_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_new_session()
 
-  mem <- session |> wt_memory("memory")
-  mem <- mem |> wt_memory_write(ptr = 1, value = charToRaw("Z"), dtype = "u8")
-  list(
-    bytes = rawToChar(mem |> wt_memory_read(ptr = 0, length = 3, dtype = "u8")),
-    load8 = session |> wt_call("load8", 1L)
-  )
-}, error = identity)
-
-memory_print <- wt_readme_result(memory_out)
-if (is.list(memory_print)) as.data.frame(memory_print) else memory_print
+mem <- session |> wt_memory("memory")
+mem <- mem |> wt_memory_write(ptr = 1, value = charToRaw("Z"), dtype = "u8")
+as.data.frame(list(
+  bytes = rawToChar(mem |> wt_memory_read(ptr = 0, length = 3, dtype = "u8")),
+  load8 = session |> wt_call("load8", 1L)
+))
 ```
 
 A `WtArray` is an explicit guest-memory copy, not a hidden R view. The guest must
@@ -437,18 +426,13 @@ array_wat <- '
     local.get $sum))
 '
 
-array_out <- tryCatch({
-  session <- wt_app(array_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_new_session()
-  xs <- session |> wt_array_write(c(1.5, 2.25, 3.25), dtype = "f64")
-  list(values = wt_as_array(xs), sum = session |> wt_call("sum_f64", xs$ptr, xs$length))
-}, error = identity)
-
-array_print <- wt_readme_result(array_out)
-if (is.list(array_print)) as.data.frame(array_print) else array_print
+session <- wt_app(array_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_new_session()
+xs <- session |> wt_array_write(c(1.5, 2.25, 3.25), dtype = "f64")
+as.data.frame(list(values = I(list(wt_as_array(xs))), sum = session |> wt_call("sum_f64", xs$ptr, xs$length)))
 ```
 
 ## Sandbox REPL, including a webR guest
@@ -466,7 +450,7 @@ as a guest protocol boundary:
 A future webR-in-Wasmtime sandbox should be represented as a persistent webR
 guest adapter, not as host R evaluation.
 
-```{r repl-shape}
+```{r repl-shape, error=TRUE}
 webr <- wt_webr_repl(
   source = "webr.component.wasm",
   runtime = rt,
@@ -488,14 +472,22 @@ webr <- wt_webr_repl(
 
 webr |> wt_repl_info()
 
-err <- tryCatch(webr |> wt_repl_eval("1 + 1"), error = identity)
-class(err)[1]
-conditionMessage(err)
+webr |> wt_repl_eval("1 + 1")
 ```
 
 Native backend builds already support the core-memory protocol for guests that
 choose that ABI: an exported memory, an input allocation path, an
 `eval(ptr, len)` export, and explicit result/stdout/stderr/error/status exports.
+
+A useful real target is Simon Willison's
+[`micropython-wasm`](https://github.com/simonw/micropython-wasm), which ships a
+WASI MicroPython artifact for Wasmtime. It validates the same high-level shape:
+run MicroPython as a guest, pass source through explicit host/guest channels,
+capture stdout/stderr, and keep state in a persistent session. Current
+Rwasmtime cannot run that artifact yet because it uses Wasm exception handling
+and imports custom `micropython_wasm.host_call` / `host_result_cap` functions in
+addition to WASI. That makes it an honest next integration test once
+`exceptions = TRUE` and typed custom host imports are implemented.
 
 ```{r core-repl-concrete}
 core_repl_wat <- '
@@ -521,23 +513,20 @@ core_repl_wat <- '
   (func (export "result_len") (result i32) global.get $result_len))
 '
 
-repl_out <- tryCatch({
-  repl <- wt_app(core_repl_wat) |>
-    wt_as_module() |>
-    wt_with_runtime(rt) |>
-    wt_prepare() |>
-    wt_repl(
-      protocol = "core",
-      eval_export = "repl_eval",
-      memory = "memory",
-      alloc_export = "alloc",
-      result_ptr_export = "result_ptr",
-      result_len_export = "result_len"
-    )
-  (repl |> wt_repl_eval("1 + 1"))$value
-}, error = identity)
+repl <- wt_app(core_repl_wat) |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_repl(
+    protocol = "core",
+    eval_export = "repl_eval",
+    memory = "memory",
+    alloc_export = "alloc",
+    result_ptr_export = "result_ptr",
+    result_len_export = "result_len"
+  )
 
-wt_readme_result(repl_out)
+(repl |> wt_repl_eval("1 + 1"))$value
 ```
 
 The package includes `protocol = "mock"` only for API-shape tests. It is not a

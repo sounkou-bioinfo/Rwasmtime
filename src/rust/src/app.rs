@@ -19,11 +19,17 @@ pub struct RwasmtimeError {
 
 impl RwasmtimeError {
     pub fn invalid_argument(message: impl Into<String>) -> Self {
-        Self { kind: RwasmtimeErrorKind::InvalidArgument, message: message.into() }
+        Self {
+            kind: RwasmtimeErrorKind::InvalidArgument,
+            message: message.into(),
+        }
     }
 
     pub fn not_implemented(feature: impl Into<String>) -> Self {
-        Self { kind: RwasmtimeErrorKind::NotImplemented, message: feature.into() }
+        Self {
+            kind: RwasmtimeErrorKind::NotImplemented,
+            message: feature.into(),
+        }
     }
 }
 
@@ -69,12 +75,25 @@ pub struct ArrayPolicy {
 
 impl ArrayPolicy {
     pub fn new() -> Self {
-        Self { default_dtype: ArrayDType::F64, layout: ArrayLayout::ColumnMajor, transport: ArrayTransport::Arena }
+        Self {
+            default_dtype: ArrayDType::F64,
+            layout: ArrayLayout::ColumnMajor,
+            transport: ArrayTransport::Arena,
+        }
     }
 
-    pub fn default_dtype(mut self, value: ArrayDType) -> Self { self.default_dtype = value; self }
-    pub fn layout(mut self, value: ArrayLayout) -> Self { self.layout = value; self }
-    pub fn transport(mut self, value: ArrayTransport) -> Self { self.transport = value; self }
+    pub fn default_dtype(mut self, value: ArrayDType) -> Self {
+        self.default_dtype = value;
+        self
+    }
+    pub fn layout(mut self, value: ArrayLayout) -> Self {
+        self.layout = value;
+        self
+    }
+    pub fn transport(mut self, value: ArrayTransport) -> Self {
+        self.transport = value;
+        self
+    }
 }
 
 impl Default for ArrayPolicy {
@@ -116,9 +135,18 @@ impl AppSpec {
         }
     }
 
-    pub fn module(mut self) -> Self { self.kind = SourceKind::Module; self }
-    pub fn component(mut self) -> Self { self.kind = SourceKind::Component; self }
-    pub fn artifact(mut self) -> Self { self.kind = SourceKind::Artifact; self }
+    pub fn module(mut self) -> Self {
+        self.kind = SourceKind::Module;
+        self
+    }
+    pub fn component(mut self) -> Self {
+        self.kind = SourceKind::Component;
+        self
+    }
+    pub fn artifact(mut self) -> Self {
+        self.kind = SourceKind::Artifact;
+        self
+    }
 
     pub fn runtime(mut self, runtime: &Runtime) -> Self {
         self.runtime = Some(runtime.spec.clone());
@@ -130,13 +158,29 @@ impl AppSpec {
         self
     }
 
-    pub fn wasi(mut self, wasi: WasiSpec) -> Self { self.wasi = Some(wasi); self }
-    pub fn limits(mut self, limits: Limits) -> Self { self.limits = Some(limits); self }
-    pub fn callbacks(mut self, callbacks: CallbackSet) -> Self { self.callbacks = Some(callbacks); self }
-    pub fn arrays(mut self, arrays: ArrayPolicy) -> Self { self.arrays = arrays; self }
+    pub fn wasi(mut self, wasi: WasiSpec) -> Self {
+        self.wasi = Some(wasi);
+        self
+    }
+    pub fn limits(mut self, limits: Limits) -> Self {
+        self.limits = Some(limits);
+        self
+    }
+    pub fn callbacks(mut self, callbacks: CallbackSet) -> Self {
+        self.callbacks = Some(callbacks);
+        self
+    }
+    pub fn arrays(mut self, arrays: ArrayPolicy) -> Self {
+        self.arrays = arrays;
+        self
+    }
 
     pub fn wit(mut self, path: impl Into<String>, world: Option<String>, validate: bool) -> Self {
-        self.wit = Some(WitSpec { path: path.into(), world, validate });
+        self.wit = Some(WitSpec {
+            path: path.into(),
+            world,
+            validate,
+        });
         self
     }
 
@@ -152,15 +196,25 @@ pub struct PreparedApp {
 
 impl PreparedApp {
     pub fn new_session(&self) -> Session {
-        Session { app: self.clone(), temp_arrays: Vec::new() }
+        Session {
+            app: self.clone(),
+            temp_arrays: Vec::new(),
+        }
     }
 
     pub fn call(&self, export: &str, _args: Vec<Value>) -> Result<Value> {
-        Err(RwasmtimeError::not_implemented(format!("wt_call({export})")))
+        Err(RwasmtimeError::not_implemented(format!(
+            "wt_call({export})"
+        )))
     }
 
     pub fn call_async(&self, export: impl Into<String>, args: Vec<Value>) -> Job {
-        Job { export: export.into(), args, state: JobState::Pending, result: None }
+        Job {
+            export: export.into(),
+            args,
+            state: JobState::Pending,
+            result: None,
+        }
     }
 }
 
@@ -172,15 +226,22 @@ pub struct Session {
 
 impl Session {
     pub fn exec(&mut self, export: &str, _args: Vec<Value>) -> Result<&mut Self> {
-        Err(RwasmtimeError::not_implemented(format!("wt_exec({export})")))
+        Err(RwasmtimeError::not_implemented(format!(
+            "wt_exec({export})"
+        )))
     }
 
     pub fn call(&mut self, export: &str, _args: Vec<Value>) -> Result<Value> {
-        Err(RwasmtimeError::not_implemented(format!("wt_call({export})")))
+        Err(RwasmtimeError::not_implemented(format!(
+            "wt_call({export})"
+        )))
     }
 
     pub fn with_temp_array(mut self, name: impl Into<String>, dtype: Option<ArrayDType>) -> Self {
-        self.temp_arrays.push(TempArray { name: name.into(), dtype });
+        self.temp_arrays.push(TempArray {
+            name: name.into(),
+            dtype,
+        });
         self
     }
 }
@@ -248,7 +309,10 @@ impl Job {
     pub fn await_result(&self) -> Result<Value> {
         match (&self.state, &self.result) {
             (JobState::Done, Some(value)) => Ok(value.clone()),
-            (JobState::Cancelled, _) => Err(RwasmtimeError { kind: RwasmtimeErrorKind::InvalidArgument, message: "job was cancelled".to_string() }),
+            (JobState::Cancelled, _) => Err(RwasmtimeError {
+                kind: RwasmtimeErrorKind::InvalidArgument,
+                message: "job was cancelled".to_string(),
+            }),
             _ => Err(RwasmtimeError::not_implemented("wt_await")),
         }
     }
@@ -272,7 +336,9 @@ mod tests {
             .arg("--input")
             .preopen("/data", "/safe/data", true)
             .stdio(StdioMode::Empty, StdioMode::Capture, StdioMode::Capture);
-        let limits = Limits::new().memory_bytes(512 * 1024 * 1024).wall_time_ms(5_000);
+        let limits = Limits::new()
+            .memory_bytes(512 * 1024 * 1024)
+            .wall_time_ms(5_000);
         let callbacks = CallbackSet::new().callback(
             CallbackSpec::component("rwasmtime:host/callbacks.log")
                 .policy(CallbackPolicy::blocking_main_thread()),
@@ -290,14 +356,22 @@ mod tests {
         assert_eq!(app.spec.kind, SourceKind::Component);
         assert!(app.spec.runtime.is_some());
         assert_eq!(app.spec.wasi.as_ref().map(|w| w.preopens.len()), Some(1));
-        assert_eq!(app.spec.limits.as_ref().and_then(|l| l.wall_time_ms), Some(5_000));
-        assert_eq!(app.spec.callbacks.as_ref().map(|c| c.imports.len()), Some(1));
+        assert_eq!(
+            app.spec.limits.as_ref().and_then(|l| l.wall_time_ms),
+            Some(5_000)
+        );
+        assert_eq!(
+            app.spec.callbacks.as_ref().map(|c| c.imports.len()),
+            Some(1)
+        );
     }
 
     #[test]
     fn execution_boundaries_fail_honestly_until_backend_lands() {
         let app = AppSpec::new("tool.wasm").module().prepare();
-        let err = app.call("run", Vec::new()).expect_err("call should be pending backend");
+        let err = app
+            .call("run", Vec::new())
+            .expect_err("call should be pending backend");
         assert_eq!(err.kind, RwasmtimeErrorKind::NotImplemented);
         assert!(err.message.contains("wt_call(run)"));
 
@@ -306,7 +380,9 @@ mod tests {
         let status = job.poll_status();
         assert_eq!(status.state, JobState::Pending);
         assert!(!status.done);
-        let await_err = job.await_result().expect_err("await should be pending backend");
+        let await_err = job
+            .await_result()
+            .expect_err("await should be pending backend");
         assert_eq!(await_err.kind, RwasmtimeErrorKind::NotImplemented);
     }
 }

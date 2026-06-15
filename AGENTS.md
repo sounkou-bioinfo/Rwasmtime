@@ -120,8 +120,9 @@ Preferred public functions:
   `wt_with_arrays()`, `wt_with_wit()`, `wt_prepare()`.
 - Execution: `wt_call()`, `wt_exec()`, `wt_call_async()`, `wt_poll()`,
   `wt_await()`, `wt_drain_callbacks()`, `wt_result()`, `wt_cancel()`.
-- AOT: `wt_compile()`, `wt_aot_save()`, `wt_aot_load()`, `wt_artifact_info()`,
-  `wt_artifact_compatible()`.
+- AOT/introspection: `wt_compile()`, `wt_aot_save()`, `wt_aot_load()`,
+  `wt_artifact_info()`, `wt_artifact_compatible()`, `wt_imports()`,
+  `wt_exports()`, `wt_bindings()`.
 - Memory/arrays: `wt_memory()`, `wt_memory_size()`, `wt_memory_grow()`,
   `wt_memory_read()`, `wt_memory_write()`, `wt_memory_view()`,
   `wt_array_write()`, `wt_as_array()`, `wt_with_temp_array()`, `wt_arg_array()`,

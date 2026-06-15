@@ -101,6 +101,28 @@ The default implementation must copy data. Borrowed memory views must be explici
 about lifetime and mutability. Component-value array transport remains a future
 WIT/value-conversion boundary.
 
+# Structural binding metadata
+
+Core Wasm modules are self-describing at the structural ABI level. Native
+compiled artifacts can expose this with `wt_imports()`, `wt_exports()`, and
+`wt_bindings()`:
+
+```r
+artifact <- runtime |>
+  wt_compile("plugin.wasm", kind = "module")
+
+imports <- artifact |> wt_imports()
+exports <- artifact |> wt_exports()
+bindings <- artifact |> wt_bindings()
+```
+
+This metadata is intentionally shallow. It can report that an export is
+`(i32, i32) -> i32`, that a module imports `env::memory`, or that a table is
+`funcref` with a declared minimum. It cannot infer whether an `i32` is an R
+integer, a guest pointer, a string offset, an array handle, or a resource token.
+Those semantics must come from WIT/component metadata or an explicit ABI policy
+provided by the user or package author.
+
 # Component and WIT values
 
 Component calls cross a copied-value boundary. Small structured arguments should

@@ -298,7 +298,7 @@ missing <- tryCatch(
   artifact |> wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker()),
   error = identity
 )
-expect_true(inherits(missing, "error"))
+expect_true(inherits(missing, "rwasmtime_link_error"))
 expect_false(inherits(missing, "rwasmtime_callback_error"))
 expect_true(grepl("expected 1 imports", conditionMessage(missing), fixed = TRUE) || grepl("missing", conditionMessage(missing), fixed = TRUE))
 
@@ -308,13 +308,13 @@ missing_prepared <- wt_app(callback_wat) |>
   wt_with_callbacks(wt_callbacks()) |>
   wt_prepare()
 missing <- tryCatch(wt_call(missing_prepared, "run", 1L), error = identity)
-expect_true(inherits(missing, "error"))
+expect_true(inherits(missing, "rwasmtime_link_error"))
 expect_false(inherits(missing, "rwasmtime_callback_error"))
 expect_true(grepl("missing R callback", conditionMessage(missing), fixed = TRUE))
 missing_job <- missing_prepared |> wt_call_async("run", 1L)
 expect_true(isTRUE(wt_poll(missing_job)$error))
 missing <- tryCatch(missing_job |> wt_await(), error = identity)
-expect_true(inherits(missing, "error"))
+expect_true(inherits(missing, "rwasmtime_link_error"))
 expect_false(inherits(missing, "rwasmtime_callback_error"))
 expect_true(grepl("missing R callback", conditionMessage(missing), fixed = TRUE))
 
@@ -324,7 +324,7 @@ err <- tryCatch(
   artifact |> wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker() |> wt_link_callbacks(extra_callbacks)),
   error = identity
 )
-expect_true(inherits(err, "error"))
+expect_true(inherits(err, "rwasmtime_link_error"))
 expect_false(inherits(err, "rwasmtime_callback_error"))
 expect_true(grepl("not imported", conditionMessage(err), fixed = TRUE))
 extra_prepared <- wt_app(callback_wat) |>
@@ -333,12 +333,12 @@ extra_prepared <- wt_app(callback_wat) |>
   wt_with_callbacks(extra_callbacks) |>
   wt_prepare()
 err <- tryCatch(wt_call(extra_prepared, "run", 1L), error = identity)
-expect_true(inherits(err, "error"))
+expect_true(inherits(err, "rwasmtime_link_error"))
 expect_false(inherits(err, "rwasmtime_callback_error"))
 expect_true(grepl("not imported", conditionMessage(err), fixed = TRUE))
 extra_job <- extra_prepared |> wt_call_async("run", 1L)
 expect_true(isTRUE(wt_poll(extra_job)$error))
 err <- tryCatch(extra_job |> wt_await(), error = identity)
-expect_true(inherits(err, "error"))
+expect_true(inherits(err, "rwasmtime_link_error"))
 expect_false(inherits(err, "rwasmtime_callback_error"))
 expect_true(grepl("not imported", conditionMessage(err), fixed = TRUE))

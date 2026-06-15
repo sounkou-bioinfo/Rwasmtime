@@ -82,21 +82,29 @@ impl ReplSpec {
 
     pub fn validate(&self) -> Result<()> {
         if self.prompt.is_empty() {
-            return Err(RwasmtimeError::invalid_argument("REPL prompt must not be empty"));
+            return Err(RwasmtimeError::invalid_argument(
+                "REPL prompt must not be empty",
+            ));
         }
         if self.continuation.is_empty() {
-            return Err(RwasmtimeError::invalid_argument("REPL continuation prompt must not be empty"));
+            return Err(RwasmtimeError::invalid_argument(
+                "REPL continuation prompt must not be empty",
+            ));
         }
         match self.protocol {
             ReplProtocol::Component | ReplProtocol::Callback | ReplProtocol::CoreMemory => {
                 if self.eval_export.as_deref().unwrap_or("").is_empty() {
-                    return Err(RwasmtimeError::invalid_argument("component/callback/core REPL protocols require eval_export"));
+                    return Err(RwasmtimeError::invalid_argument(
+                        "component/callback/core REPL protocols require eval_export",
+                    ));
                 }
             }
             ReplProtocol::Stdio => {}
             ReplProtocol::Mock => {
                 if self.guest.as_deref() != Some("mock") {
-                    return Err(RwasmtimeError::invalid_argument("mock REPL protocol is reserved for scaffold tests"));
+                    return Err(RwasmtimeError::invalid_argument(
+                        "mock REPL protocol is reserved for scaffold tests",
+                    ));
                 }
             }
         }
@@ -112,7 +120,10 @@ pub struct ReplRequest {
 
 impl ReplRequest {
     pub fn new(sequence: u64, code: impl Into<String>) -> Self {
-        Self { sequence, code: code.into() }
+        Self {
+            sequence,
+            code: code.into(),
+        }
     }
 }
 
@@ -165,7 +176,12 @@ pub struct ReplSession {
 impl ReplSession {
     pub fn new(spec: ReplSpec) -> Result<Self> {
         spec.validate()?;
-        Ok(Self { spec, open: true, history: Vec::new(), results: Vec::new() })
+        Ok(Self {
+            spec,
+            open: true,
+            history: Vec::new(),
+            results: Vec::new(),
+        })
     }
 
     pub fn close(mut self) -> Self {
@@ -185,16 +201,28 @@ impl ReplSession {
                 self.results.push(ReplResult::mock(code));
                 Ok(())
             }
-            ReplProtocol::Component => Err(RwasmtimeError::not_implemented("wt_repl_send protocol=component")),
-            ReplProtocol::Stdio => Err(RwasmtimeError::not_implemented("wt_repl_send protocol=stdio")),
-            ReplProtocol::Callback => Err(RwasmtimeError::not_implemented("wt_repl_send protocol=callback")),
-            ReplProtocol::CoreMemory => Err(RwasmtimeError::not_implemented("wt_repl_send protocol=core")),
+            ReplProtocol::Component => Err(RwasmtimeError::not_implemented(
+                "wt_repl_send protocol=component",
+            )),
+            ReplProtocol::Stdio => Err(RwasmtimeError::not_implemented(
+                "wt_repl_send protocol=stdio",
+            )),
+            ReplProtocol::Callback => Err(RwasmtimeError::not_implemented(
+                "wt_repl_send protocol=callback",
+            )),
+            ReplProtocol::CoreMemory => Err(RwasmtimeError::not_implemented(
+                "wt_repl_send protocol=core",
+            )),
         }
     }
 
     pub fn eval(&mut self, code: impl Into<String>) -> Result<ReplResult> {
         self.send(code)?;
-        Ok(self.results.last().cloned().expect("mock send stores a result"))
+        Ok(self
+            .results
+            .last()
+            .cloned()
+            .expect("mock send stores a result"))
     }
 }
 
@@ -214,15 +242,22 @@ mod tests {
 
     #[test]
     fn repl_protocol_validation_requires_explicit_guest_contract() {
-        let err = ReplSpec::component("").validate().expect_err("component REPL needs an export");
+        let err = ReplSpec::component("")
+            .validate()
+            .expect_err("component REPL needs an export");
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
         assert!(err.message.contains("eval_export"));
 
-        let err = ReplSpec::core_memory("").validate().expect_err("core-memory REPL needs an export");
+        let err = ReplSpec::core_memory("")
+            .validate()
+            .expect_err("core-memory REPL needs an export");
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
         assert!(err.message.contains("eval_export"));
 
-        let err = ReplSpec::mock().guest("webR").validate().expect_err("mock is not webR");
+        let err = ReplSpec::mock()
+            .guest("webR")
+            .validate()
+            .expect_err("mock is not webR");
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
         assert!(err.message.contains("mock REPL"));
     }
@@ -230,7 +265,9 @@ mod tests {
     #[test]
     fn non_mock_repl_send_fails_without_recording_history() {
         let mut session = ReplSession::new(ReplSpec::component("guest:repl/eval")).unwrap();
-        let err = session.send("1 + 1").expect_err("backend protocol is not implemented");
+        let err = session
+            .send("1 + 1")
+            .expect_err("backend protocol is not implemented");
         assert_eq!(err.kind, RwasmtimeErrorKind::NotImplemented);
         assert!(session.history.is_empty());
         assert!(session.results.is_empty());

@@ -151,6 +151,16 @@ SEXP savvy_RwasmtimeNativeModule_instantiate_wasi_p1__ffi(
   return rwasmtime_savvy_pending_error();
 }
 
+SEXP savvy_RwasmtimeNativeModule_exports__ffi(SEXP self__) {
+  (void)self__;
+  return rwasmtime_savvy_pending_error();
+}
+
+SEXP savvy_RwasmtimeNativeModule_imports__ffi(SEXP self__) {
+  (void)self__;
+  return rwasmtime_savvy_pending_error();
+}
+
 SEXP savvy_RwasmtimeNativeModule_serialize__ffi(SEXP self__) {
   (void)self__;
   return rwasmtime_savvy_pending_error();
@@ -169,6 +179,8 @@ SEXP savvy_RwasmtimeNativeRuntime_build__ffi(
     SEXP c_arg__multi_memory,
     SEXP c_arg__memory64,
     SEXP c_arg__threads,
+    SEXP c_arg__exceptions,
+    SEXP c_arg__legacy_exceptions,
     SEXP c_arg__gc) {
   (void)c_arg__compiler_strategy;
   (void)c_arg__opt_level;
@@ -182,6 +194,8 @@ SEXP savvy_RwasmtimeNativeRuntime_build__ffi(
   (void)c_arg__multi_memory;
   (void)c_arg__memory64;
   (void)c_arg__threads;
+  (void)c_arg__exceptions;
+  (void)c_arg__legacy_exceptions;
   (void)c_arg__gc;
   return rwasmtime_savvy_pending_error();
 }

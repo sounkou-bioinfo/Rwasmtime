@@ -2,11 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rwasmtime::app::RwasmtimeError;
-use rwasmtime::backend::{CoreExecutionLimits, CoreHostFunc, CoreInstance, CoreModule, WasmtimeRuntime};
+use rwasmtime::backend::{
+    CoreExecutionLimits, CoreHostFunc, CoreInstance, CoreItem, CoreModule, WasmtimeRuntime,
+};
 use rwasmtime::config::OptLevel;
 use rwasmtime::{CompilerSpec, CompilerStrategy, FeatureSpec, RuntimeSpec, StdioMode, WasiSpec};
 use savvy::savvy;
-use savvy::{FunctionArgs, FunctionSexp, ListSexp, NullSexp, OwnedIntegerSexp, OwnedListSexp, OwnedLogicalSexp, OwnedRawSexp, OwnedRealSexp, OwnedStringSexp, Sexp, StringSexp, TypedSexp};
+use savvy::{
+    FunctionArgs, FunctionSexp, ListSexp, NullSexp, OwnedIntegerSexp, OwnedListSexp,
+    OwnedLogicalSexp, OwnedRawSexp, OwnedRealSexp, OwnedStringSexp, Sexp, StringSexp, TypedSexp,
+};
 
 /// Native Wasmtime runtime handle owned by the Savvy adapter.
 /// @noRd
@@ -45,6 +50,8 @@ impl RwasmtimeNativeRuntime {
         multi_memory: bool,
         memory64: bool,
         threads: bool,
+        exceptions: bool,
+        legacy_exceptions: bool,
         gc: bool,
     ) -> savvy::Result<Self> {
         let compiler = CompilerSpec {
@@ -62,6 +69,8 @@ impl RwasmtimeNativeRuntime {
         features.multi_memory = multi_memory;
         features.memory64 = memory64;
         features.threads = threads;
+        features.exceptions = exceptions;
+        features.legacy_exceptions = legacy_exceptions;
         features.gc = gc;
         let runtime = RuntimeSpec::new()
             .compiler(compiler)
@@ -72,27 +81,56 @@ impl RwasmtimeNativeRuntime {
     }
 
     /// Compile a core Wasm module once for later instantiation.
-    fn compile_core(&self, module: &str) -> savvy::Result<RwasmtimeNativeModule> {
-        let inner = self.inner.compile_core(module).map_err(to_savvy_error)?;
+    fn compile_core(&self, module: Sexp) -> savvy::Result<RwasmtimeNativeModule> {
+        let bytes;
+        let module_ref: &[u8] = match module.into_typed() {
+            TypedSexp::Raw(value) => {
+                bytes = value.to_vec();
+                &bytes
+            }
+            TypedSexp::String(value) => {
+                let text = single_string(value, "module")?;
+                bytes = text.into_bytes();
+                &bytes
+            }
+            _ => {
+                return Err(savvy::Error::new(
+                    "module must be a character scalar or raw vector",
+                ))
+            }
+        };
+        let inner = self
+            .inner
+            .compile_core(module_ref)
+            .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeModule { inner })
     }
 
     /// Deserialize a previously serialized core Wasm module artifact.
     fn deserialize_core(&self, bytes: Sexp) -> savvy::Result<RwasmtimeNativeModule> {
         let bytes = raw_vec(bytes, "bytes")?;
-        let inner = self.inner.deserialize_core(&bytes).map_err(to_savvy_error)?;
+        let inner = self
+            .inner
+            .deserialize_core(&bytes)
+            .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeModule { inner })
     }
 
     /// Compile a Wasm component and return copied import metadata.
     fn component_imports(&self, component: &str) -> savvy::Result<Sexp> {
-        let items = self.inner.component_imports(component).map_err(to_savvy_error)?;
+        let items = self
+            .inner
+            .component_imports(component)
+            .map_err(to_savvy_error)?;
         component_items_value(items)
     }
 
     /// Compile a Wasm component and return copied export metadata.
     fn component_exports(&self, component: &str) -> savvy::Result<Sexp> {
-        let items = self.inner.component_exports(component).map_err(to_savvy_error)?;
+        let items = self
+            .inner
+            .component_exports(component)
+            .map_err(to_savvy_error)?;
         component_items_value(items)
     }
 
@@ -106,8 +144,12 @@ impl RwasmtimeNativeRuntime {
         fuel: f64,
         wall_time_ms: f64,
     ) -> savvy::Result<RwasmtimeNativeInstance> {
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
-        let inner = self.inner.instantiate_core(module, limits).map_err(to_savvy_error)?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let inner = self
+            .inner
+            .instantiate_core(module, limits)
+            .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeInstance { inner })
     }
 
@@ -123,7 +165,8 @@ impl RwasmtimeNativeRuntime {
         fuel: f64,
         wall_time_ms: f64,
     ) -> savvy::Result<Sexp> {
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
         call_core_dynamic(&self.inner, module, export, args, limits)
     }
 
@@ -159,7 +202,8 @@ impl RwasmtimeNativeRuntime {
             stderr,
             input,
         )?;
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
         let output = self
             .inner
             .run_wasi_p1_command(module, &wasi, limits)
@@ -179,7 +223,8 @@ impl RwasmtimeNativeModule {
         fuel: f64,
         wall_time_ms: f64,
     ) -> savvy::Result<RwasmtimeNativeInstance> {
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
         let inner = self.inner.instantiate(limits).map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeInstance { inner })
     }
@@ -196,9 +241,18 @@ impl RwasmtimeNativeModule {
         fuel: f64,
         wall_time_ms: f64,
     ) -> savvy::Result<RwasmtimeNativeInstance> {
-        let host_funcs = build_core_host_funcs(&self.inner, callback_modules, callback_names, callback_functions)?;
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
-        let inner = self.inner.instantiate_with_host_funcs(host_funcs, limits).map_err(to_savvy_error)?;
+        let host_funcs = build_core_host_funcs(
+            &self.inner,
+            callback_modules,
+            callback_names,
+            callback_functions,
+        )?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let inner = self
+            .inner
+            .instantiate_with_host_funcs(host_funcs, limits)
+            .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeInstance { inner })
     }
 
@@ -233,9 +287,23 @@ impl RwasmtimeNativeModule {
             stderr,
             input,
         )?;
-        let limits = core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
-        let inner = self.inner.instantiate_wasi_p1(&wasi, limits).map_err(to_savvy_error)?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let inner = self
+            .inner
+            .instantiate_wasi_p1(&wasi, limits)
+            .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeInstance { inner })
+    }
+
+    /// Return copied core import metadata for this compiled module.
+    fn imports(&self) -> savvy::Result<Sexp> {
+        core_items_value(self.inner.imports())
+    }
+
+    /// Return copied core export metadata for this compiled module.
+    fn exports(&self) -> savvy::Result<Sexp> {
+        core_items_value(self.inner.exports())
     }
 
     /// Serialize this compiled core module to bytes for AOT save/load.
@@ -261,7 +329,10 @@ impl RwasmtimeNativeInstance {
     /// Grow an exported linear memory by a number of Wasm pages; returns the previous size.
     fn memory_grow(&mut self, name: &str, pages: f64) -> savvy::Result<Sexp> {
         let pages = whole_nonnegative_u64(pages, "pages")?;
-        let previous = self.inner.memory_grow_pages(name, pages).map_err(to_savvy_error)?;
+        let previous = self
+            .inner
+            .memory_grow_pages(name, pages)
+            .map_err(to_savvy_error)?;
         real_scalar(previous as f64)?.into()
     }
 
@@ -269,7 +340,10 @@ impl RwasmtimeNativeInstance {
     fn memory_read(&mut self, name: &str, offset: f64, len: f64) -> savvy::Result<Sexp> {
         let offset = whole_nonnegative_usize(offset, "offset")?;
         let len = whole_nonnegative_usize(len, "length")?;
-        let bytes = self.inner.memory_read(name, offset, len).map_err(to_savvy_error)?;
+        let bytes = self
+            .inner
+            .memory_read(name, offset, len)
+            .map_err(to_savvy_error)?;
         raw_value(bytes)?.into()
     }
 
@@ -277,7 +351,9 @@ impl RwasmtimeNativeInstance {
     fn memory_write(&mut self, name: &str, offset: f64, value: Sexp) -> savvy::Result<Sexp> {
         let offset = whole_nonnegative_usize(offset, "offset")?;
         let bytes = raw_vec(value, "value")?;
-        self.inner.memory_write(name, offset, &bytes).map_err(to_savvy_error)?;
+        self.inner
+            .memory_write(name, offset, &bytes)
+            .map_err(to_savvy_error)?;
         Ok(NullSexp.into())
     }
 
@@ -330,7 +406,8 @@ impl PreservedRFunction {
         let out = FunctionSexp(self.inner)
             .call(fargs)
             .map_err(|err| wasmtime_error(format!("R callback `{name}` failed: {err}")))?;
-        assign_callback_results(name, Sexp::from(out), result_tys, results).map_err(savvy_to_wasmtime_error)
+        assign_callback_results(name, Sexp::from(out), result_tys, results)
+            .map_err(savvy_to_wasmtime_error)
     }
 }
 
@@ -349,18 +426,22 @@ fn build_core_host_funcs(
     let modules = string_vec(callback_modules);
     let names = string_vec(callback_names);
     if modules.len() != names.len() || names.len() != callback_functions.len() {
-        return Err(savvy::Error::new("callback module/name/function vectors must have the same length"));
+        return Err(savvy::Error::new(
+            "callback module/name/function vectors must have the same length",
+        ));
     }
 
     let mut callbacks = HashMap::new();
     for index in 0..names.len() {
         let key = format!("{}::{}", modules[index], names[index]);
         if callbacks.contains_key(&key) {
-            return Err(savvy::Error::new(&format!("duplicate callback import: {key}")));
+            return Err(savvy::Error::new(&format!(
+                "duplicate callback import: {key}"
+            )));
         }
-        let function = callback_functions
-            .get_by_index(index)
-            .ok_or_else(|| savvy::Error::new("callback function list is shorter than callback names"))?;
+        let function = callback_functions.get_by_index(index).ok_or_else(|| {
+            savvy::Error::new("callback function list is shorter than callback names")
+        })?;
         callbacks.insert(key, Arc::new(PreservedRFunction::new(function)?));
     }
 
@@ -370,10 +451,15 @@ fn build_core_host_funcs(
     for import in module.func_imports() {
         let key = format!("{}::{}", import.module, import.name);
         let Some(function) = callbacks.get(&key).cloned() else {
-            return Err(savvy::Error::new(&format!("missing R callback for core import `{key}`")));
+            return Err(savvy::Error::new(&format!(
+                "missing R callback for core import `{key}`"
+            )));
         };
         used.insert(key.clone());
-        let signature = (val_type_names(&import.params), val_type_names(&import.results));
+        let signature = (
+            val_type_names(&import.params),
+            val_type_names(&import.results),
+        );
         if let Some(existing) = linked_signatures.get(&key) {
             if existing != &signature {
                 return Err(savvy::Error::new(&format!(
@@ -389,11 +475,17 @@ fn build_core_host_funcs(
             import.name,
             import.params,
             import.results,
-            Arc::new(move |name, args, results| function.call_core(name, args, &result_tys, results)),
+            Arc::new(move |name, args, results| {
+                function.call_core(name, args, &result_tys, results)
+            }),
         ));
     }
 
-    let mut unused: Vec<_> = callbacks.keys().filter(|key| !used.contains(*key)).cloned().collect();
+    let mut unused: Vec<_> = callbacks
+        .keys()
+        .filter(|key| !used.contains(*key))
+        .cloned()
+        .collect();
     unused.sort();
     if !unused.is_empty() {
         return Err(savvy::Error::new(&format!(
@@ -422,7 +514,10 @@ fn assign_callback_results(
         return Ok(());
     }
     let list = ListSexp::try_from(value).map_err(|_| {
-        savvy::Error::new(&format!("R callback `{name}` must return a list for {} Wasm results", result_tys.len()))
+        savvy::Error::new(&format!(
+            "R callback `{name}` must return a list for {} Wasm results",
+            result_tys.len()
+        ))
     })?;
     if list.len() != result_tys.len() {
         return Err(savvy::Error::new(&format!(
@@ -455,11 +550,17 @@ fn call_core_dynamic(
     args: ListSexp,
     limits: CoreExecutionLimits,
 ) -> savvy::Result<Sexp> {
-    let mut instance = runtime.instantiate_core(module, limits).map_err(to_savvy_error)?;
+    let mut instance = runtime
+        .instantiate_core(module, limits)
+        .map_err(to_savvy_error)?;
     call_core_instance_dynamic(&mut instance, export, args)
 }
 
-fn call_core_instance_dynamic(instance: &mut CoreInstance, export: &str, args: ListSexp) -> savvy::Result<Sexp> {
+fn call_core_instance_dynamic(
+    instance: &mut CoreInstance,
+    export: &str,
+    args: ListSexp,
+) -> savvy::Result<Sexp> {
     let ty = instance.func_type(export).map_err(to_savvy_error)?;
     let params: Vec<_> = ty.params().collect();
     let result_tys: Vec<_> = ty.results().collect();
@@ -486,7 +587,11 @@ fn call_core_instance_dynamic(instance: &mut CoreInstance, export: &str, args: L
     values_to_sexp(wasm_results)
 }
 
-fn sexp_to_val(value: Sexp, expected: &wasmtime::ValType, index: usize) -> savvy::Result<wasmtime::Val> {
+fn sexp_to_val(
+    value: Sexp,
+    expected: &wasmtime::ValType,
+    index: usize,
+) -> savvy::Result<wasmtime::Val> {
     match expected {
         wasmtime::ValType::I32 => Ok(wasmtime::Val::I32(coerce_i32(value, index)?)),
         wasmtime::ValType::I64 => Ok(wasmtime::Val::I64(coerce_i64(value, index)?)),
@@ -499,7 +604,9 @@ fn sexp_to_val(value: Sexp, expected: &wasmtime::ValType, index: usize) -> savvy
 
 fn default_val_for_type(ty: &wasmtime::ValType) -> savvy::Result<wasmtime::Val> {
     wasmtime::Val::default_for_ty(ty).ok_or_else(|| {
-        savvy::Error::new(&format!("core result value type {ty:?} has no default value for dynamic calls"))
+        savvy::Error::new(&format!(
+            "core result value type {ty:?} has no default value for dynamic calls"
+        ))
     })
 }
 
@@ -529,15 +636,30 @@ fn val_to_sexp(value: wasmtime::Val) -> savvy::Result<Sexp> {
         wasmtime::Val::AnyRef(None) => null_ref_value("anyref"),
         wasmtime::Val::ExnRef(None) => null_ref_value("exnref"),
         wasmtime::Val::ContRef(None) => null_ref_value("contref"),
-        other => Err(savvy::Error::new(&format!("non-null core result reference {other:?} is not implemented"))),
+        other => Err(savvy::Error::new(&format!(
+            "non-null core result reference {other:?} is not implemented"
+        ))),
     }
 }
 
 fn coerce_i32(value: Sexp, index: usize) -> savvy::Result<i32> {
     match value.into_typed() {
         TypedSexp::Integer(value) if value.len() == 1 => Ok(value.as_slice()[0]),
-        TypedSexp::Logical(value) if value.len() == 1 => Ok(if value.iter().next().unwrap_or(false) { 1 } else { 0 }),
-        TypedSexp::Real(value) if value.len() == 1 => checked_integral(value.as_slice()[0], i32::MIN as f64, i32::MAX as f64, "i32", index).map(|v| v as i32),
+        TypedSexp::Logical(value) if value.len() == 1 => {
+            Ok(if value.iter().next().unwrap_or(false) {
+                1
+            } else {
+                0
+            })
+        }
+        TypedSexp::Real(value) if value.len() == 1 => checked_integral(
+            value.as_slice()[0],
+            i32::MIN as f64,
+            i32::MAX as f64,
+            "i32",
+            index,
+        )
+        .map(|v| v as i32),
         _ => Err(numeric_error("i32", index)),
     }
 }
@@ -545,7 +667,13 @@ fn coerce_i32(value: Sexp, index: usize) -> savvy::Result<i32> {
 fn coerce_i64(value: Sexp, index: usize) -> savvy::Result<i64> {
     match value.into_typed() {
         TypedSexp::Integer(value) if value.len() == 1 => Ok(value.as_slice()[0] as i64),
-        TypedSexp::Logical(value) if value.len() == 1 => Ok(if value.iter().next().unwrap_or(false) { 1 } else { 0 }),
+        TypedSexp::Logical(value) if value.len() == 1 => {
+            Ok(if value.iter().next().unwrap_or(false) {
+                1
+            } else {
+                0
+            })
+        }
         TypedSexp::Real(value) if value.len() == 1 => checked_safe_i64(value.as_slice()[0], index),
         TypedSexp::String(value) if value.len() == 1 => value
             .iter()
@@ -560,18 +688,30 @@ fn coerce_i64(value: Sexp, index: usize) -> savvy::Result<i64> {
 fn coerce_v128(value: Sexp, index: usize) -> savvy::Result<wasmtime::V128> {
     let bytes = raw_vec(value, &format!("argument {index}"))?;
     if bytes.len() != 16 {
-        return Err(savvy::Error::new(&format!("argument {index} for Wasm v128 must be a raw vector of length 16")));
+        return Err(savvy::Error::new(&format!(
+            "argument {index} for Wasm v128 must be a raw vector of length 16"
+        )));
     }
     let mut array = [0_u8; 16];
     array.copy_from_slice(&bytes);
     Ok(wasmtime::V128::from(u128::from_le_bytes(array)))
 }
 
-fn coerce_null_ref(value: Sexp, ref_ty: &wasmtime::RefType, index: usize) -> savvy::Result<wasmtime::Val> {
+fn coerce_null_ref(
+    value: Sexp,
+    ref_ty: &wasmtime::RefType,
+    index: usize,
+) -> savvy::Result<wasmtime::Val> {
     match value.into_typed() {
-        TypedSexp::Null(_) if ref_ty.is_nullable() => Ok(wasmtime::Val::null_ref(ref_ty.heap_type())),
-        TypedSexp::Null(_) => Err(savvy::Error::new(&format!("argument {index} is NULL but the expected reference type is non-nullable"))),
-        _ => Err(savvy::Error::new(&format!("only NULL is implemented for core reference argument {index}"))),
+        TypedSexp::Null(_) if ref_ty.is_nullable() => {
+            Ok(wasmtime::Val::null_ref(ref_ty.heap_type()))
+        }
+        TypedSexp::Null(_) => Err(savvy::Error::new(&format!(
+            "argument {index} is NULL but the expected reference type is non-nullable"
+        ))),
+        _ => Err(savvy::Error::new(&format!(
+            "only NULL is implemented for core reference argument {index}"
+        ))),
     }
 }
 
@@ -587,13 +727,27 @@ fn coerce_f32(value: Sexp, index: usize) -> savvy::Result<f32> {
 fn coerce_f64(value: Sexp, index: usize) -> savvy::Result<f64> {
     match value.into_typed() {
         TypedSexp::Integer(value) if value.len() == 1 => Ok(value.as_slice()[0] as f64),
-        TypedSexp::Logical(value) if value.len() == 1 => Ok(if value.iter().next().unwrap_or(false) { 1.0 } else { 0.0 }),
-        TypedSexp::Real(value) if value.len() == 1 && value.as_slice()[0].is_finite() => Ok(value.as_slice()[0]),
+        TypedSexp::Logical(value) if value.len() == 1 => {
+            Ok(if value.iter().next().unwrap_or(false) {
+                1.0
+            } else {
+                0.0
+            })
+        }
+        TypedSexp::Real(value) if value.len() == 1 && value.as_slice()[0].is_finite() => {
+            Ok(value.as_slice()[0])
+        }
         _ => Err(numeric_error("f64", index)),
     }
 }
 
-fn checked_integral(value: f64, min: f64, max: f64, expected: &str, index: usize) -> savvy::Result<f64> {
+fn checked_integral(
+    value: f64,
+    min: f64,
+    max: f64,
+    expected: &str,
+    index: usize,
+) -> savvy::Result<f64> {
     if value.is_finite() && value.fract() == 0.0 && value >= min && value <= max {
         Ok(value)
     } else {
@@ -613,7 +767,9 @@ fn checked_safe_i64(value: f64, index: usize) -> savvy::Result<i64> {
 }
 
 fn numeric_error(expected: &str, index: usize) -> savvy::Error {
-    savvy::Error::new(&format!("argument {index} cannot be represented as Wasm {expected}"))
+    savvy::Error::new(&format!(
+        "argument {index} cannot be represented as Wasm {expected}"
+    ))
 }
 
 fn parse_compiler_strategy(value: &str) -> savvy::Result<CompilerStrategy> {
@@ -621,7 +777,9 @@ fn parse_compiler_strategy(value: &str) -> savvy::Result<CompilerStrategy> {
         "auto" => Ok(CompilerStrategy::Auto),
         "cranelift" => Ok(CompilerStrategy::Cranelift),
         "winch" => Ok(CompilerStrategy::Winch),
-        other => Err(savvy::Error::new(&format!("unsupported compiler strategy `{other}`"))),
+        other => Err(savvy::Error::new(&format!(
+            "unsupported compiler strategy `{other}`"
+        ))),
     }
 }
 
@@ -630,7 +788,9 @@ fn parse_opt_level(value: &str) -> savvy::Result<OptLevel> {
         "none" => Ok(OptLevel::None),
         "speed" => Ok(OptLevel::Speed),
         "speed_and_size" => Ok(OptLevel::SpeedAndSize),
-        other => Err(savvy::Error::new(&format!("unsupported opt_level `{other}`"))),
+        other => Err(savvy::Error::new(&format!(
+            "unsupported opt_level `{other}`"
+        ))),
     }
 }
 
@@ -654,7 +814,9 @@ fn wasi_spec_from_parts(
     let env_names = string_vec(env_names);
     let env_values = string_vec(env_values);
     if env_names.len() != env_values.len() {
-        return Err(savvy::Error::new("WASI env names and values must have the same length"));
+        return Err(savvy::Error::new(
+            "WASI env names and values must have the same length",
+        ));
     }
     for (name, value) in env_names.into_iter().zip(env_values.into_iter()) {
         wasi = wasi.env(name, value);
@@ -664,13 +826,23 @@ fn wasi_spec_from_parts(
     let preopen_host = string_vec(preopen_host);
     let preopen_readonly = logical_vec(preopen_readonly, "preopen_readonly")?;
     if preopen_guest.len() != preopen_host.len() || preopen_guest.len() != preopen_readonly.len() {
-        return Err(savvy::Error::new("WASI preopen vectors must have the same length"));
+        return Err(savvy::Error::new(
+            "WASI preopen vectors must have the same length",
+        ));
     }
-    for ((guest, host), readonly) in preopen_guest.into_iter().zip(preopen_host.into_iter()).zip(preopen_readonly.into_iter()) {
+    for ((guest, host), readonly) in preopen_guest
+        .into_iter()
+        .zip(preopen_host.into_iter())
+        .zip(preopen_readonly.into_iter())
+    {
         wasi = wasi.preopen(guest, host, readonly);
     }
 
-    wasi = wasi.stdio(parse_stdio(stdin, "stdin")?, parse_stdio(stdout, "stdout")?, parse_stdio(stderr, "stderr")?);
+    wasi = wasi.stdio(
+        parse_stdio(stdin, "stdin")?,
+        parse_stdio(stdout, "stdout")?,
+        parse_stdio(stderr, "stderr")?,
+    );
     if let Some(input) = optional_raw_vec(input, "input")? {
         wasi = wasi.stdin_bytes(input);
     }
@@ -692,7 +864,9 @@ fn parse_stdio(value: &str, name: &str) -> savvy::Result<StdioMode> {
         "file" => Ok(StdioMode::File),
         "capture" => Ok(StdioMode::Capture),
         "discard" => Ok(StdioMode::Discard),
-        other => Err(savvy::Error::new(&format!("unsupported WASI {name} stdio mode `{other}`"))),
+        other => Err(savvy::Error::new(&format!(
+            "unsupported WASI {name} stdio mode `{other}`"
+        ))),
     }
 }
 
@@ -700,10 +874,22 @@ fn string_vec(value: StringSexp) -> Vec<String> {
     value.iter().map(|item| item.to_string()).collect()
 }
 
+fn single_string(value: StringSexp, name: &str) -> savvy::Result<String> {
+    let values: Vec<String> = string_vec(value);
+    if values.len() != 1 {
+        return Err(savvy::Error::new(&format!(
+            "{name} must be a character scalar"
+        )));
+    }
+    Ok(values[0].clone())
+}
+
 fn logical_vec(value: Sexp, name: &str) -> savvy::Result<Vec<bool>> {
     match value.into_typed() {
         TypedSexp::Logical(value) => Ok(value.iter().collect()),
-        _ => Err(savvy::Error::new(&format!("{name} must be a logical vector"))),
+        _ => Err(savvy::Error::new(&format!(
+            "{name} must be a logical vector"
+        ))),
     }
 }
 
@@ -722,7 +908,9 @@ fn optional_raw_vec(value: Sexp, name: &str) -> savvy::Result<Option<Vec<u8>>> {
     match value.into_typed() {
         TypedSexp::Null(_) => Ok(None),
         TypedSexp::Raw(value) => Ok(Some(value.to_vec())),
-        _ => Err(savvy::Error::new(&format!("{name} must be NULL or a raw vector"))),
+        _ => Err(savvy::Error::new(&format!(
+            "{name} must be NULL or a raw vector"
+        ))),
     }
 }
 
@@ -730,7 +918,9 @@ fn whole_nonnegative_usize(value: f64, name: &str) -> savvy::Result<usize> {
     if value.is_finite() && value.fract() == 0.0 && value >= 0.0 && value <= usize::MAX as f64 {
         Ok(value as usize)
     } else {
-        Err(savvy::Error::new(&format!("{name} must be a non-negative whole number representable as usize")))
+        Err(savvy::Error::new(&format!(
+            "{name} must be a non-negative whole number representable as usize"
+        )))
     }
 }
 
@@ -738,7 +928,9 @@ fn whole_nonnegative_u64(value: f64, name: &str) -> savvy::Result<u64> {
     if value.is_finite() && value.fract() == 0.0 && value >= 0.0 && value <= u64::MAX as f64 {
         Ok(value as u64)
     } else {
-        Err(savvy::Error::new(&format!("{name} must be a non-negative whole number representable as u64")))
+        Err(savvy::Error::new(&format!(
+            "{name} must be a non-negative whole number representable as u64"
+        )))
     }
 }
 
@@ -776,13 +968,101 @@ fn component_items_value(items: Vec<rwasmtime::component::ComponentItem>) -> sav
     out.into()
 }
 
+fn core_items_value(items: Vec<CoreItem>) -> savvy::Result<Sexp> {
+    let mut out = OwnedListSexp::new(items.len(), false)?;
+    for (i, item) in items.into_iter().enumerate() {
+        out.set_value(i, core_item_value(item)?)?;
+    }
+    out.into()
+}
+
+fn core_item_value(item: CoreItem) -> savvy::Result<Sexp> {
+    let mut out = OwnedListSexp::new(13, true)?;
+    out.set_name_and_value(0, "module", optional_str_value(item.module.as_deref())?)?;
+    out.set_name_and_value(1, "name", str_scalar(&item.name)?)?;
+    out.set_name_and_value(2, "kind", str_scalar(&item.kind)?)?;
+    out.set_name_and_value(3, "params", string_vector_value(&item.params)?)?;
+    out.set_name_and_value(4, "results", string_vector_value(&item.results)?)?;
+    out.set_name_and_value(5, "minimum", optional_str_value(item.minimum.as_deref())?)?;
+    out.set_name_and_value(6, "maximum", optional_str_value(item.maximum.as_deref())?)?;
+    out.set_name_and_value(7, "shared", optional_logical_value(item.shared)?)?;
+    out.set_name_and_value(8, "memory64", optional_logical_value(item.memory64)?)?;
+    out.set_name_and_value(9, "mutable", optional_logical_value(item.mutable)?)?;
+    out.set_name_and_value(10, "element", optional_str_value(item.element.as_deref())?)?;
+    out.set_name_and_value(
+        11,
+        "value_type",
+        optional_str_value(item.value_type.as_deref())?,
+    )?;
+    out.set_name_and_value(12, "signature", str_scalar(&core_item_signature(&item))?)?;
+    out.into()
+}
+
+fn core_item_signature(item: &CoreItem) -> String {
+    match item.kind.as_str() {
+        "function" | "tag" => format!(
+            "({}) -> ({})",
+            item.params.join(", "),
+            item.results.join(", ")
+        ),
+        "memory" => format!(
+            "memory min={} max={}{}{}",
+            item.minimum.as_deref().unwrap_or("?"),
+            item.maximum.as_deref().unwrap_or("unbounded"),
+            if item.shared == Some(true) {
+                " shared"
+            } else {
+                ""
+            },
+            if item.memory64 == Some(true) {
+                " memory64"
+            } else {
+                ""
+            }
+        ),
+        "table" => format!(
+            "table {} min={} max={}{}",
+            item.element.as_deref().unwrap_or("?"),
+            item.minimum.as_deref().unwrap_or("?"),
+            item.maximum.as_deref().unwrap_or("unbounded"),
+            if item.memory64 == Some(true) {
+                " table64"
+            } else {
+                ""
+            }
+        ),
+        "global" => format!(
+            "{} global {}",
+            if item.mutable == Some(true) {
+                "mutable"
+            } else {
+                "immutable"
+            },
+            item.value_type.as_deref().unwrap_or("?")
+        ),
+        _ => item.kind.clone(),
+    }
+}
+
 fn component_item_value(item: rwasmtime::component::ComponentItem) -> savvy::Result<Sexp> {
     let mut out = OwnedListSexp::new(5, true)?;
     out.set_name_and_value(0, "name", str_scalar(&item.name)?)?;
     out.set_name_and_value(1, "kind", str_scalar(component_item_kind(item.kind))?)?;
-    out.set_name_and_value(2, "interface", optional_str_value(item.interface.as_deref())?)?;
-    out.set_name_and_value(3, "params_schema", optional_str_value(item.params_schema.as_deref())?)?;
-    out.set_name_and_value(4, "results_schema", optional_str_value(item.results_schema.as_deref())?)?;
+    out.set_name_and_value(
+        2,
+        "interface",
+        optional_str_value(item.interface.as_deref())?,
+    )?;
+    out.set_name_and_value(
+        3,
+        "params_schema",
+        optional_str_value(item.params_schema.as_deref())?,
+    )?;
+    out.set_name_and_value(
+        4,
+        "results_schema",
+        optional_str_value(item.results_schema.as_deref())?,
+    )?;
     out.into()
 }
 
@@ -800,6 +1080,21 @@ fn optional_str_value(value: Option<&str>) -> savvy::Result<Sexp> {
         Some(value) => str_scalar(value)?.into(),
         None => Ok(NullSexp.into()),
     }
+}
+
+fn optional_logical_value(value: Option<bool>) -> savvy::Result<Sexp> {
+    match value {
+        Some(value) => logical_scalar(value)?.into(),
+        None => Ok(NullSexp.into()),
+    }
+}
+
+fn string_vector_value(values: &[String]) -> savvy::Result<OwnedStringSexp> {
+    let mut out = OwnedStringSexp::new(values.len())?;
+    for (index, value) in values.iter().enumerate() {
+        out.set_elt(index, value)?;
+    }
+    Ok(out)
 }
 
 fn str_scalar(value: &str) -> savvy::Result<OwnedStringSexp> {

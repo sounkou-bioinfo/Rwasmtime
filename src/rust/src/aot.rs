@@ -20,14 +20,39 @@ pub struct ArtifactMetadata {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtifactCompatibilityIssue {
-    FormatVersion { expected: u32, found: u32 },
-    RwasmtimeVersion { expected: String, found: String },
-    WasmtimeVersion { expected: String, found: String },
-    Target { expected: String, found: String },
-    SourceKind { expected: SourceKind, found: SourceKind },
-    CompilerStrategy { expected: CompilerStrategy, found: CompilerStrategy },
-    OptLevel { expected: OptLevel, found: OptLevel },
-    Feature { name: &'static str, expected: bool, found: bool },
+    FormatVersion {
+        expected: u32,
+        found: u32,
+    },
+    RwasmtimeVersion {
+        expected: String,
+        found: String,
+    },
+    WasmtimeVersion {
+        expected: String,
+        found: String,
+    },
+    Target {
+        expected: String,
+        found: String,
+    },
+    SourceKind {
+        expected: SourceKind,
+        found: SourceKind,
+    },
+    CompilerStrategy {
+        expected: CompilerStrategy,
+        found: CompilerStrategy,
+    },
+    OptLevel {
+        expected: OptLevel,
+        found: OptLevel,
+    },
+    Feature {
+        name: &'static str,
+        expected: bool,
+        found: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +108,11 @@ impl ArtifactCompatibility {
                 ArtifactCompatibilityIssue::OptLevel { expected, found } => {
                     format!("optimization level expected {expected:?}, found {found:?}")
                 }
-                ArtifactCompatibilityIssue::Feature { name, expected, found } => {
+                ArtifactCompatibilityIssue::Feature {
+                    name,
+                    expected,
+                    found,
+                } => {
                     format!("feature {name} expected {expected}, found {found}")
                 }
             })
@@ -141,11 +170,19 @@ impl ArtifactMetadata {
         self
     }
 
-    pub fn compatibility_with(&self, runtime: &Runtime, expected_kind: SourceKind) -> ArtifactCompatibility {
+    pub fn compatibility_with(
+        &self,
+        runtime: &Runtime,
+        expected_kind: SourceKind,
+    ) -> ArtifactCompatibility {
         self.compatibility_with_spec(&runtime.spec, expected_kind)
     }
 
-    pub fn compatibility_with_spec(&self, spec: &RuntimeSpec, expected_kind: SourceKind) -> ArtifactCompatibility {
+    pub fn compatibility_with_spec(
+        &self,
+        spec: &RuntimeSpec,
+        expected_kind: SourceKind,
+    ) -> ArtifactCompatibility {
         let mut issues = Vec::new();
         push_ne_u32(
             &mut issues,
@@ -172,24 +209,39 @@ impl ArtifactMetadata {
             |expected, found| ArtifactCompatibilityIssue::Target { expected, found },
         );
         if self.kind != expected_kind {
-            issues.push(ArtifactCompatibilityIssue::SourceKind { expected: expected_kind, found: self.kind });
+            issues.push(ArtifactCompatibilityIssue::SourceKind {
+                expected: expected_kind,
+                found: self.kind,
+            });
         }
         if self.compiler != spec.compiler.strategy {
-            issues.push(ArtifactCompatibilityIssue::CompilerStrategy { expected: spec.compiler.strategy, found: self.compiler });
+            issues.push(ArtifactCompatibilityIssue::CompilerStrategy {
+                expected: spec.compiler.strategy,
+                found: self.compiler,
+            });
         }
         if self.opt_level != spec.compiler.opt_level {
-            issues.push(ArtifactCompatibilityIssue::OptLevel { expected: spec.compiler.opt_level, found: self.opt_level });
+            issues.push(ArtifactCompatibilityIssue::OptLevel {
+                expected: spec.compiler.opt_level,
+                found: self.opt_level,
+            });
         }
         compare_features(&mut issues, &spec.features, &self.features);
         ArtifactCompatibility { issues }
     }
 
     pub fn compatible_with(&self, runtime: &Runtime, expected_kind: SourceKind) -> bool {
-        self.compatibility_with(runtime, expected_kind).is_compatible()
+        self.compatibility_with(runtime, expected_kind)
+            .is_compatible()
     }
 
-    pub fn ensure_compatible_with_spec(&self, spec: &RuntimeSpec, expected_kind: SourceKind) -> Result<()> {
-        self.compatibility_with_spec(spec, expected_kind).into_result()
+    pub fn ensure_compatible_with_spec(
+        &self,
+        spec: &RuntimeSpec,
+        expected_kind: SourceKind,
+    ) -> Result<()> {
+        self.compatibility_with_spec(spec, expected_kind)
+            .into_result()
     }
 }
 
@@ -206,8 +258,12 @@ where
     }
 }
 
-fn push_ne_string<F>(issues: &mut Vec<ArtifactCompatibilityIssue>, expected: &str, found: &str, make: F)
-where
+fn push_ne_string<F>(
+    issues: &mut Vec<ArtifactCompatibilityIssue>,
+    expected: &str,
+    found: &str,
+    make: F,
+) where
     F: FnOnce(String, String) -> ArtifactCompatibilityIssue,
 {
     if expected != found {
@@ -215,22 +271,72 @@ where
     }
 }
 
-fn compare_features(issues: &mut Vec<ArtifactCompatibilityIssue>, expected: &FeatureSpec, found: &FeatureSpec) {
-    feature(issues, "component_model", expected.component_model, found.component_model);
-    feature(issues, "component_model_async", expected.component_model_async, found.component_model_async);
+fn compare_features(
+    issues: &mut Vec<ArtifactCompatibilityIssue>,
+    expected: &FeatureSpec,
+    found: &FeatureSpec,
+) {
+    feature(
+        issues,
+        "component_model",
+        expected.component_model,
+        found.component_model,
+    );
+    feature(
+        issues,
+        "component_model_async",
+        expected.component_model_async,
+        found.component_model_async,
+    );
     feature(issues, "simd", expected.simd, found.simd);
-    feature(issues, "relaxed_simd", expected.relaxed_simd, found.relaxed_simd);
-    feature(issues, "relaxed_simd_deterministic", expected.relaxed_simd_deterministic, found.relaxed_simd_deterministic);
-    feature(issues, "bulk_memory", expected.bulk_memory, found.bulk_memory);
-    feature(issues, "multi_memory", expected.multi_memory, found.multi_memory);
+    feature(
+        issues,
+        "relaxed_simd",
+        expected.relaxed_simd,
+        found.relaxed_simd,
+    );
+    feature(
+        issues,
+        "relaxed_simd_deterministic",
+        expected.relaxed_simd_deterministic,
+        found.relaxed_simd_deterministic,
+    );
+    feature(
+        issues,
+        "bulk_memory",
+        expected.bulk_memory,
+        found.bulk_memory,
+    );
+    feature(
+        issues,
+        "multi_memory",
+        expected.multi_memory,
+        found.multi_memory,
+    );
     feature(issues, "memory64", expected.memory64, found.memory64);
     feature(issues, "threads", expected.threads, found.threads);
+    feature(issues, "exceptions", expected.exceptions, found.exceptions);
+    feature(
+        issues,
+        "legacy_exceptions",
+        expected.legacy_exceptions,
+        found.legacy_exceptions,
+    );
     feature(issues, "gc", expected.gc, found.gc);
 }
 
-fn feature(issues: &mut Vec<ArtifactCompatibilityIssue>, name: &'static str, expected: bool, found: bool) {
+fn feature(
+    issues: &mut Vec<ArtifactCompatibilityIssue>,
+    name: &'static str,
+    expected: bool,
+    found: bool,
+) {
     if expected != found {
-        issues.push(ArtifactCompatibilityIssue::Feature { name, expected, found });
+        issues.push(ArtifactCompatibilityIssue::Feature {
+            name,
+            expected,
+            found,
+        });
     }
 }
 
@@ -243,7 +349,12 @@ mod tests {
     fn artifact_metadata_records_compiler_features_target_and_versions() {
         let runtime = RuntimeSpec::new()
             .compiler(CompilerSpec::cranelift().speed_and_size().parallel(false))
-            .features(FeatureSpec::new().component_model(true).simd(true).memory64(false))
+            .features(
+                FeatureSpec::new()
+                    .component_model(true)
+                    .simd(true)
+                    .memory64(false),
+            )
             .build();
 
         let metadata = ArtifactMetadata::from_runtime(&runtime, SourceKind::Component);
@@ -274,14 +385,40 @@ mod tests {
 
         let report = metadata.compatibility_with(&runtime, SourceKind::Module);
         assert!(!report.is_compatible());
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::FormatVersion { .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::RwasmtimeVersion { .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::WasmtimeVersion { .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::Target { .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::SourceKind { .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::Feature { name: "component_model", .. })));
-        assert!(report.issues.iter().any(|i| matches!(i, ArtifactCompatibilityIssue::Feature { name: "simd", .. })));
-        let err = report.into_result().expect_err("incompatible artifact should fail");
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::FormatVersion { .. })));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::RwasmtimeVersion { .. })));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::WasmtimeVersion { .. })));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::Target { .. })));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::SourceKind { .. })));
+        assert!(report.issues.iter().any(|i| matches!(
+            i,
+            ArtifactCompatibilityIssue::Feature {
+                name: "component_model",
+                ..
+            }
+        )));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ArtifactCompatibilityIssue::Feature { name: "simd", .. })));
+        let err = report
+            .into_result()
+            .expect_err("incompatible artifact should fail");
         assert_eq!(err.kind, RwasmtimeErrorKind::AotIncompatible);
         assert!(err.message.contains("format_version"));
     }

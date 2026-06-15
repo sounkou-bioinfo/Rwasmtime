@@ -160,19 +160,39 @@ pub unsafe extern "C" fn rwasmtime_backend_call_core(
         return set_error(STATUS_INVALID_ARGUMENT, "runtime must not be NULL", message);
     }
     if module_len > 0 && module_bytes.is_null() {
-        return set_error(STATUS_INVALID_ARGUMENT, "module_bytes must not be NULL when module_len is non-zero", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "module_bytes must not be NULL when module_len is non-zero",
+            message,
+        );
     }
     if module_len == 0 {
-        return set_error(STATUS_INVALID_ARGUMENT, "module_len must be non-zero", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "module_len must be non-zero",
+            message,
+        );
     }
     if args_len > 0 && args.is_null() {
-        return set_error(STATUS_INVALID_ARGUMENT, "args must not be NULL when args_len is non-zero", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "args must not be NULL when args_len is non-zero",
+            message,
+        );
     }
     if results_capacity > 0 && results.is_null() {
-        return set_error(STATUS_INVALID_ARGUMENT, "results must not be NULL when results_capacity is non-zero", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "results must not be NULL when results_capacity is non-zero",
+            message,
+        );
     }
     if results_len.is_null() {
-        return set_error(STATUS_INVALID_ARGUMENT, "results_len must not be NULL", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "results_len must not be NULL",
+            message,
+        );
     }
 
     let module = std::slice::from_raw_parts(module_bytes, module_len);
@@ -191,7 +211,14 @@ pub unsafe extern "C" fn rwasmtime_backend_call_core(
     };
     let runtime = &*runtime;
 
-    match call_core(&runtime.runtime, module, export, args, results_capacity, limits) {
+    match call_core(
+        &runtime.runtime,
+        module,
+        export,
+        args,
+        results_capacity,
+        limits,
+    ) {
         Ok(values) => {
             *results_len = values.len();
             for (i, value) in values.iter().enumerate() {
@@ -221,7 +248,11 @@ pub unsafe extern "C" fn rwasmtime_backend_run_wasi_p1_command(
         return set_error(STATUS_INVALID_ARGUMENT, "runtime must not be NULL", message);
     }
     if stdout_out.is_null() || stderr_out.is_null() {
-        return set_error(STATUS_INVALID_ARGUMENT, "stdout/stderr output buffers must not be NULL", message);
+        return set_error(
+            STATUS_INVALID_ARGUMENT,
+            "stdout/stderr output buffers must not be NULL",
+            message,
+        );
     }
     let module = match required_str(module, "module") {
         Ok(value) => value,
@@ -235,7 +266,10 @@ pub unsafe extern "C" fn rwasmtime_backend_run_wasi_p1_command(
             Err(err) => return set_error(status_from_error(&err), &err.message, message),
         };
         let runtime = &*runtime;
-        match runtime.runtime.run_wasi_p1_command(module, &wasi, CoreExecutionLimits::none()) {
+        match runtime
+            .runtime
+            .run_wasi_p1_command(module, &wasi, CoreExecutionLimits::none())
+        {
             Ok(output) => {
                 *stdout_out = buffer_from_vec(output.stdout);
                 *stderr_out = buffer_from_vec(output.stderr);
@@ -318,7 +352,11 @@ fn call_core(
         .collect()
 }
 
-fn core_value_to_val(value: CoreValue, expected: &wasmtime::ValType, index: usize) -> Result<wasmtime::Val, RwasmtimeError> {
+fn core_value_to_val(
+    value: CoreValue,
+    expected: &wasmtime::ValType,
+    index: usize,
+) -> Result<wasmtime::Val, RwasmtimeError> {
     match expected {
         wasmtime::ValType::I32 => Ok(wasmtime::Val::I32(coerce_i32(value, index)?)),
         wasmtime::ValType::I64 => Ok(wasmtime::Val::I64(coerce_i64(value, index)?)),
@@ -356,19 +394,35 @@ fn val_to_core_value(value: wasmtime::Val, index: usize) -> Result<CoreValue, Rw
 
 impl CoreValue {
     fn i32(value: i32) -> Self {
-        Self { tag: CORE_VALUE_I32, i64_value: value as i64, f64_value: value as f64 }
+        Self {
+            tag: CORE_VALUE_I32,
+            i64_value: value as i64,
+            f64_value: value as f64,
+        }
     }
 
     fn i64(value: i64) -> Self {
-        Self { tag: CORE_VALUE_I64, i64_value: value, f64_value: value as f64 }
+        Self {
+            tag: CORE_VALUE_I64,
+            i64_value: value,
+            f64_value: value as f64,
+        }
     }
 
     fn f32(value: f32) -> Self {
-        Self { tag: CORE_VALUE_F32, i64_value: value as i64, f64_value: value as f64 }
+        Self {
+            tag: CORE_VALUE_F32,
+            i64_value: value as i64,
+            f64_value: value as f64,
+        }
     }
 
     fn f64(value: f64) -> Self {
-        Self { tag: CORE_VALUE_F64, i64_value: value as i64, f64_value: value }
+        Self {
+            tag: CORE_VALUE_F64,
+            i64_value: value as i64,
+            f64_value: value,
+        }
     }
 }
 
@@ -441,7 +495,10 @@ unsafe fn clear_buffer(out: *mut ByteBuffer) {
 
 #[cfg(feature = "wasi")]
 fn buffer_from_vec(mut value: Vec<u8>) -> ByteBuffer {
-    let out = ByteBuffer { data: value.as_mut_ptr(), len: value.len() };
+    let out = ByteBuffer {
+        data: value.as_mut_ptr(),
+        len: value.len(),
+    };
     std::mem::forget(value);
     out
 }
@@ -485,11 +542,17 @@ unsafe fn wasi_spec_from_options(opts: *const WasiOptions) -> Result<WasiSpec, R
 }
 
 #[cfg(feature = "wasi")]
-unsafe fn pointer_slice<'a, T>(ptr: *const T, len: usize, name: &str) -> Result<&'a [T], RwasmtimeError> {
+unsafe fn pointer_slice<'a, T>(
+    ptr: *const T,
+    len: usize,
+    name: &str,
+) -> Result<&'a [T], RwasmtimeError> {
     if len == 0 {
         Ok(&[])
     } else if ptr.is_null() {
-        Err(RwasmtimeError::invalid_argument(format!("{name} pointer must not be NULL when length is non-zero")))
+        Err(RwasmtimeError::invalid_argument(format!(
+            "{name} pointer must not be NULL when length is non-zero"
+        )))
     } else {
         Ok(std::slice::from_raw_parts(ptr, len))
     }
@@ -510,7 +573,9 @@ fn stdio_mode(value: u32, name: &str) -> Result<StdioMode, RwasmtimeError> {
     }
 }
 
-unsafe fn core_call_limits_from_options(opts: *const CoreCallOptions) -> Result<CoreExecutionLimits, RwasmtimeError> {
+unsafe fn core_call_limits_from_options(
+    opts: *const CoreCallOptions,
+) -> Result<CoreExecutionLimits, RwasmtimeError> {
     let Some(opts) = opts.as_ref() else {
         return Ok(CoreExecutionLimits::none());
     };
@@ -522,7 +587,8 @@ unsafe fn core_call_limits_from_options(opts: *const CoreCallOptions) -> Result<
     Ok(CoreExecutionLimits::new(
         option_if_set(opts.has_fuel, opts.fuel),
         option_if_set(opts.has_wall_time_ms, opts.wall_time_ms),
-    ).resource_limits(
+    )
+    .resource_limits(
         option_if_set(opts.has_memory_bytes, opts.memory_bytes),
         option_if_set(opts.has_table_elements, opts.table_elements),
         option_if_set(opts.has_instances, opts.instances),
@@ -530,10 +596,16 @@ unsafe fn core_call_limits_from_options(opts: *const CoreCallOptions) -> Result<
 }
 
 fn option_if_set(has_value: c_int, value: u64) -> Option<u64> {
-    if has_value != 0 { Some(value) } else { None }
+    if has_value != 0 {
+        Some(value)
+    } else {
+        None
+    }
 }
 
-unsafe fn runtime_spec_from_options(opts: *const RuntimeOptions) -> Result<RuntimeSpec, RwasmtimeError> {
+unsafe fn runtime_spec_from_options(
+    opts: *const RuntimeOptions,
+) -> Result<RuntimeSpec, RwasmtimeError> {
     let Some(opts) = opts.as_ref() else {
         return Ok(RuntimeSpec::new());
     };
@@ -544,7 +616,11 @@ unsafe fn runtime_spec_from_options(opts: *const RuntimeOptions) -> Result<Runti
     compiler.parallel = apply_toggle(opts.parallel, compiler.parallel, "parallel")?;
 
     let mut features = FeatureSpec::new();
-    features.component_model = apply_toggle(opts.component_model, features.component_model, "component_model")?;
+    features.component_model = apply_toggle(
+        opts.component_model,
+        features.component_model,
+        "component_model",
+    )?;
     features.simd = apply_toggle(opts.simd, features.simd, "simd")?;
     features.relaxed_simd = apply_toggle(opts.relaxed_simd, features.relaxed_simd, "relaxed_simd")?;
     features.relaxed_simd_deterministic = apply_toggle(
@@ -556,7 +632,9 @@ unsafe fn runtime_spec_from_options(opts: *const RuntimeOptions) -> Result<Runti
     Ok(RuntimeSpec::new().compiler(compiler).features(features))
 }
 
-unsafe fn parse_compiler_strategy(value: *const c_char) -> Result<CompilerStrategy, RwasmtimeError> {
+unsafe fn parse_compiler_strategy(
+    value: *const c_char,
+) -> Result<CompilerStrategy, RwasmtimeError> {
     match optional_str(value, "compiler_strategy")? {
         None | Some("auto") => Ok(CompilerStrategy::Auto),
         Some("cranelift") => Ok(CompilerStrategy::Cranelift),
@@ -578,7 +656,10 @@ unsafe fn parse_opt_level(value: *const c_char) -> Result<OptLevel, RwasmtimeErr
     }
 }
 
-unsafe fn optional_str<'a>(value: *const c_char, name: &str) -> Result<Option<&'a str>, RwasmtimeError> {
+unsafe fn optional_str<'a>(
+    value: *const c_char,
+    name: &str,
+) -> Result<Option<&'a str>, RwasmtimeError> {
     if value.is_null() {
         return Ok(None);
     }
@@ -589,7 +670,8 @@ unsafe fn optional_str<'a>(value: *const c_char, name: &str) -> Result<Option<&'
 }
 
 unsafe fn required_str<'a>(value: *const c_char, name: &str) -> Result<&'a str, RwasmtimeError> {
-    optional_str(value, name)?.ok_or_else(|| RwasmtimeError::invalid_argument(format!("{name} must not be NULL")))
+    optional_str(value, name)?
+        .ok_or_else(|| RwasmtimeError::invalid_argument(format!("{name} must not be NULL")))
 }
 
 fn apply_toggle(value: u32, default: bool, name: &str) -> Result<bool, RwasmtimeError> {

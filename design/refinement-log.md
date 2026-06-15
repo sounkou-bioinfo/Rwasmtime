@@ -83,6 +83,24 @@ read/write/grow/size operations are a real copied boundary on that persistent
 instance. Wider typed arrays, borrowed views, component memories, and WASI
 interactive sessions remain separate explicit boundaries.
 
+## 2026-06-15 webR `R.wasm` execution prerequisites
+
+Ambiguity: running the webR npm package's `dist/R.wasm` under Rwasmtime is not
+just a WASI command-module problem. The artifact is an Emscripten main module
+with `dylink.0`, dynamic-library dependencies, Emscripten JS/runtime imports,
+and `-fwasm-exceptions -s SUPPORT_LONGJMP=wasm` setjmp/longjmp support. That
+requires binary Wasm input, Wasm exception/tag parsing, and Emscripten legacy
+exception semantics before the normal webR guest protocol can even start.
+
+Resolution: expose binary core module bytes/file paths through `wt_compile()` so
+Rwasmtime can honestly try real `.wasm` artifacts instead of treating paths or
+bytes as WAT strings. Keep `exceptions` and `legacy_exceptions` as explicit
+runtime feature toggles, but reject them in the current Wasmtime backend until a
+supported Wasmtime/compiler path exists. Probes against released Wasmtime 36-38,
+39-45, and git main showed that the current webR `R.wasm` legacy exception path
+still cannot compile/run under Wasmtime/Cranelift here. Do not replace this with
+host-R evaluation or a fake webR adapter.
+
 ## 2026-06-14 core-memory REPL protocol
 
 Decision: add a narrow real REPL protocol for core modules before full
@@ -174,3 +192,41 @@ limits. It deliberately does not expose components, WASI, callbacks, persistent
 stores/instances, memory, tables, host references, or R objects. R-level behavior
 continues through the generated Savvy adapter; the C API is for downstream native
 packages that include the installed header and link/load `Rwasmtime.so`.
+
+## 2026-06-15 QOL binding introspection and condition classes
+
+Ambiguity: a Rtinycc-style declarative FFI could be read as fully automatic R
+binding generation for core Wasm modules.
+
+Resolution: core Wasm introspection is structural metadata only. `wt_imports()`,
+`wt_exports()`, and `wt_bindings()` may extract declared functions, memories,
+tables, globals, tags, value types, and exact limit strings from compiled native
+core artifacts. They must not infer whether an `i32` is an integer, pointer,
+string offset, array handle, enum, or ownership-bearing resource. High-level
+semantic bindings require WIT/component metadata or an explicit user ABI policy.
+
+Resolution: before the public API settles, native errors should stop leaking as
+plain Savvy `simpleError`s where the boundary is known. Compile, link/import,
+instantiation, unsupported-feature, trap, callback, limit, timeout, and AOT
+compatibility failures have stable `rwasmtime_*` condition classes; the original
+adapter error remains attached as `parent` when applicable.
+
+## 2026-06-15 MicroPython as REPL protocol target
+
+Observation: generic npm MicroPython Wasm packages are often Emscripten/JS-hosted
+artifacts with imported `env::memory`, `env::table`, longjmp/syscall helpers, and
+JavaScript stdout hooks. Those are useful sidecar experiments but not direct
+Rwasmtime core/WASI guests.
+
+Observation: Simon Willison's `simonw/micropython-wasm` is a better target. It
+ships `micropython-wasi.wasm`, uses Wasmtime/WASI, and implements persistent
+session semantics by running a guest bootstrap loop that obtains work through a
+custom host import (`micropython_wasm.host_call`) and reports results through the
+same host channel. This validates the guest-owned REPL protocol direction.
+
+Current blocker: the artifact uses Wasm exception handling and imports custom
+host functions (`micropython_wasm.host_call` and `host_result_cap`) in addition
+to WASI. Current Rwasmtime rejects `exceptions = TRUE` honestly, and custom typed
+host imports beyond core callbacks are not implemented. Once modern Wasm
+exceptions and typed host imports are available, this artifact is a strong native
+integration test candidate.

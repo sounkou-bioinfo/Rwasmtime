@@ -38,13 +38,19 @@ pub struct WasiSpec {
 impl WasiPreopen {
     pub fn validate(&self) -> Result<()> {
         if self.guest.is_empty() || !self.guest.starts_with('/') {
-            return Err(RwasmtimeError::invalid_argument("WASI preopen guest path must be a non-empty absolute path"));
+            return Err(RwasmtimeError::invalid_argument(
+                "WASI preopen guest path must be a non-empty absolute path",
+            ));
         }
         if self.host.is_empty() {
-            return Err(RwasmtimeError::invalid_argument("WASI preopen host path must be non-empty"));
+            return Err(RwasmtimeError::invalid_argument(
+                "WASI preopen host path must be non-empty",
+            ));
         }
         if self.guest.contains('\0') || self.host.contains('\0') {
-            return Err(RwasmtimeError::invalid_argument("WASI preopen paths must not contain NUL bytes"));
+            return Err(RwasmtimeError::invalid_argument(
+                "WASI preopen paths must not contain NUL bytes",
+            ));
         }
         Ok(())
     }
@@ -84,7 +90,11 @@ impl WasiSpec {
         host: impl Into<String>,
         readonly: bool,
     ) -> Self {
-        self.preopens.push(WasiPreopen { guest: guest.into(), host: host.into(), readonly });
+        self.preopens.push(WasiPreopen {
+            guest: guest.into(),
+            host: host.into(),
+            readonly,
+        });
         self
     }
 
@@ -119,22 +129,37 @@ impl WasiSpec {
         self
     }
 
-    pub fn network(mut self, value: bool) -> Self { self.network = value; self }
-    pub fn clocks(mut self, value: bool) -> Self { self.clocks = value; self }
-    pub fn random(mut self, value: bool) -> Self { self.random = value; self }
+    pub fn network(mut self, value: bool) -> Self {
+        self.network = value;
+        self
+    }
+    pub fn clocks(mut self, value: bool) -> Self {
+        self.clocks = value;
+        self
+    }
+    pub fn random(mut self, value: bool) -> Self {
+        self.random = value;
+        self
+    }
 
     pub fn validate(&self) -> Result<()> {
         for arg in &self.args {
             if arg.contains('\0') {
-                return Err(RwasmtimeError::invalid_argument("WASI args must not contain NUL bytes"));
+                return Err(RwasmtimeError::invalid_argument(
+                    "WASI args must not contain NUL bytes",
+                ));
             }
         }
         for (key, value) in &self.env {
             if key.is_empty() || key.contains('=') || key.contains('\0') {
-                return Err(RwasmtimeError::invalid_argument("WASI env names must be non-empty and must not contain '=' or NUL bytes"));
+                return Err(RwasmtimeError::invalid_argument(
+                    "WASI env names must be non-empty and must not contain '=' or NUL bytes",
+                ));
             }
             if value.contains('\0') {
-                return Err(RwasmtimeError::invalid_argument("WASI env values must not contain NUL bytes"));
+                return Err(RwasmtimeError::invalid_argument(
+                    "WASI env values must not contain NUL bytes",
+                ));
             }
         }
         for preopen in &self.preopens {
@@ -142,18 +167,26 @@ impl WasiSpec {
         }
         match self.stdin {
             StdioMode::String if self.stdin_bytes.is_none() => {
-                return Err(RwasmtimeError::invalid_argument("WASI stdin string mode requires stdin bytes"));
+                return Err(RwasmtimeError::invalid_argument(
+                    "WASI stdin string mode requires stdin bytes",
+                ));
             }
             StdioMode::File => {
-                return Err(RwasmtimeError::invalid_argument("WASI stdin file mode is not represented in the scaffold yet"));
+                return Err(RwasmtimeError::invalid_argument(
+                    "WASI stdin file mode is not represented in the scaffold yet",
+                ));
             }
             _ => {}
         }
         if self.stdout == StdioMode::File && self.stdout_file.as_deref().unwrap_or("").is_empty() {
-            return Err(RwasmtimeError::invalid_argument("WASI stdout file mode requires stdout_file"));
+            return Err(RwasmtimeError::invalid_argument(
+                "WASI stdout file mode requires stdout_file",
+            ));
         }
         if self.stderr == StdioMode::File && self.stderr_file.as_deref().unwrap_or("").is_empty() {
-            return Err(RwasmtimeError::invalid_argument("WASI stderr file mode requires stderr_file"));
+            return Err(RwasmtimeError::invalid_argument(
+                "WASI stderr file mode requires stderr_file",
+            ));
         }
         Ok(())
     }
@@ -163,7 +196,12 @@ impl WasiSpec {
     }
 
     pub fn grants_ambient_authority(&self) -> bool {
-        self.network || self.clocks || self.random || self.stdin == StdioMode::Inherit || self.stdout == StdioMode::Inherit || self.stderr == StdioMode::Inherit
+        self.network
+            || self.clocks
+            || self.random
+            || self.stdin == StdioMode::Inherit
+            || self.stdout == StdioMode::Inherit
+            || self.stderr == StdioMode::Inherit
     }
 }
 

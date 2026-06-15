@@ -48,7 +48,7 @@ for (expr in list(
 )) {
   err <- tryCatch(eval(expr), error = identity)
   if (identical(rt$backend, "native")) {
-    expect_true(inherits(err, "error"))
+    expect_true(inherits(err, "rwasmtime_compile_error"))
     expect_true(grepl("failed to compile Wasm component", conditionMessage(err), fixed = TRUE))
   } else {
     expect_true(inherits(err, "rwasmtime_not_implemented"))

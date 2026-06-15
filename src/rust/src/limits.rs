@@ -28,13 +28,34 @@ impl Limits {
         }
     }
 
-    pub fn memory_bytes(mut self, value: u64) -> Self { self.memory_bytes = Some(value); self }
-    pub fn table_elements(mut self, value: u64) -> Self { self.table_elements = Some(value); self }
-    pub fn instances(mut self, value: u64) -> Self { self.instances = Some(value); self }
-    pub fn fuel(mut self, value: u64) -> Self { self.fuel = Some(value); self }
-    pub fn wall_time_ms(mut self, value: u64) -> Self { self.wall_time_ms = Some(value); self }
-    pub fn max_callback_calls(mut self, value: u64) -> Self { self.max_callback_calls = Some(value); self }
-    pub fn callback_timeout_ms(mut self, value: u64) -> Self { self.callback_timeout_ms = Some(value); self }
+    pub fn memory_bytes(mut self, value: u64) -> Self {
+        self.memory_bytes = Some(value);
+        self
+    }
+    pub fn table_elements(mut self, value: u64) -> Self {
+        self.table_elements = Some(value);
+        self
+    }
+    pub fn instances(mut self, value: u64) -> Self {
+        self.instances = Some(value);
+        self
+    }
+    pub fn fuel(mut self, value: u64) -> Self {
+        self.fuel = Some(value);
+        self
+    }
+    pub fn wall_time_ms(mut self, value: u64) -> Self {
+        self.wall_time_ms = Some(value);
+        self
+    }
+    pub fn max_callback_calls(mut self, value: u64) -> Self {
+        self.max_callback_calls = Some(value);
+        self
+    }
+    pub fn callback_timeout_ms(mut self, value: u64) -> Self {
+        self.callback_timeout_ms = Some(value);
+        self
+    }
 
     pub fn callback_depth(mut self, max_depth: u32, reentrant: bool) -> Self {
         self.callback_max_depth = max_depth;
@@ -44,10 +65,14 @@ impl Limits {
 
     pub fn validate(&self) -> Result<()> {
         if self.callback_max_depth == 0 {
-            return Err(RwasmtimeError::invalid_argument("callback max depth must be at least 1"));
+            return Err(RwasmtimeError::invalid_argument(
+                "callback max depth must be at least 1",
+            ));
         }
         if self.callback_reentrant && self.callback_max_depth < 2 {
-            return Err(RwasmtimeError::invalid_argument("reentrant callbacks require callback max depth of at least 2"));
+            return Err(RwasmtimeError::invalid_argument(
+                "reentrant callbacks require callback max depth of at least 2",
+            ));
         }
         Ok(())
     }
@@ -126,10 +151,16 @@ mod tests {
 
     #[test]
     fn callback_depth_validation_rejects_ambiguous_reentrancy() {
-        let err = Limits::new().callback_depth(0, false).validate().expect_err("depth zero is ambiguous");
+        let err = Limits::new()
+            .callback_depth(0, false)
+            .validate()
+            .expect_err("depth zero is ambiguous");
         assert!(err.message.contains("at least 1"));
 
-        let err = Limits::new().callback_depth(1, true).validate().expect_err("reentrant depth one is ambiguous");
+        let err = Limits::new()
+            .callback_depth(1, true)
+            .validate()
+            .expect_err("reentrant depth one is ambiguous");
         assert!(err.message.contains("at least 2"));
     }
 }

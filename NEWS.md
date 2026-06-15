@@ -12,6 +12,37 @@
   tinytest run, R CMD check, pkgdown Pages deployment, and the webR/wasm stub
   gate.
 
+## Core modules and webR boundary
+
+- Native core artifacts now support structural binding introspection with
+  `wt_imports()`, `wt_exports()`, and `wt_bindings()`. The copied metadata
+  reports core functions, memories, tables, globals, and tags with declared
+  value types and exact limit strings, while deliberately not inferring pointer,
+  string, array, handle, or ownership semantics without WIT or explicit ABI
+  metadata. README and API-boundary documentation now show this declarative
+  skeleton explicitly.
+- Native backend errors now have stable R condition classes for compile,
+  link/import, instantiation, unsupported-feature, trap, callback, limit, and
+  timeout boundaries instead of leaving compile/link/setup failures as plain
+  Savvy `simpleError`s.
+- The sandbox REPL documentation now calls out Simon Willison's
+  `micropython-wasm` as a concrete future integration target: it validates the
+  guest-owned persistent-session protocol shape under Wasmtime/WASI, but still
+  requires modern Wasm exception support and typed custom host imports before it
+  can run as a native Rwasmtime test.
+- `wt_compile()` in native backend builds now accepts raw WebAssembly module
+  bytes and character file paths to `.wasm` files, in addition to WAT text. The
+  Savvy adapter passes raw bytes to the R-free Rust core without treating binary
+  Wasm as a C/R string; low-level installed tinytests cover raw and file-backed
+  binary modules. Runtime feature specs now include explicit `exceptions` and
+  `legacy_exceptions` toggles, but this Wasmtime backend build still rejects
+  them honestly: current released Wasmtime/Cranelift and the probed git-main
+  source do not support Emscripten legacy exception/setjmp modules such as the
+  current webR `R.wasm` built with `-s SUPPORT_LONGJMP=wasm`.
+- `README.Rmd` no longer catches expected failures with `tryCatch()`. Expected
+  failing examples now use knitr chunk `error=TRUE`, while examples that should
+  run in native backend builds execute directly.
+
 ## Public C API
 
 - Extended the installed R-free C API to version 2 with one deliberately narrow
