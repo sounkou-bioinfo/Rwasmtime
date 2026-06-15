@@ -1,0 +1,35 @@
+Package: Rwasmtime
+Type: Package
+Title: Embed 'Wasmtime' WebAssembly Runtimes in R
+Version: 0.0.0.9000
+Authors@R: c(
+    person(given = "Sounkou Mahamane", family = "Toure", email = "sounkoutoure@gmail.com", role = c("aut", "cre")),
+    person("Bytecode Alliance", role = "cph", comment = "Wasmtime project and Rust crate"),
+    person("Hiroaki", "Yutani", role = "cph", comment = "savvy R/Rust interface inspiration")
+  )
+Description: Pipe-first R API scaffold for embedding the 'Wasmtime' WebAssembly
+    runtime through a Rust core and a thin 'savvy' R adapter. The intended
+    implementation exposes low-level module, component, linker, store, memory,
+    asynchronous job, AOT artifact, WASI sandbox, and host-callback operations,
+    plus higher-level sandbox/app composition and REPL-like protocols for guests
+    such as webR.
+License: GPL (>= 3)
+Copyright: See inst/AUTHORS and inst/LICENCE.note for Rust crate authorship
+    and licensing details.
+URL: https://github.com/sounkou-bioinfo/Rwasmtime,
+    https://sounkou-bioinfo.github.io/Rwasmtime/
+BugReports: https://github.com/sounkou-bioinfo/Rwasmtime/issues
+SystemRequirements: Cargo (Rust's package manager), rustc, GNU make
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Suggests:
+    tinytest,
+    roxygen2,
+    rmarkdown,
+    knitr,
+    pkgdown,
+    Rtinycc
+VignetteBuilder: knitr

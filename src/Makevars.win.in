@@ -1,0 +1,3 @@
+OBJECTS = c_api.o init.o native_stubs.o
+PKG_CPPFLAGS =
+PKG_LIBS =

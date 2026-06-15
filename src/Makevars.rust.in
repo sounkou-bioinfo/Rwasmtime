@@ -1,0 +1,8 @@
+OBJECTS = c_api.o init.o savvy/target/release/librwasmtime_savvy.a
+PKG_CPPFLAGS = -DRWASMTIME_WITH_RUST_BACKEND
+PKG_LIBS = -Wl,--exclude-libs,ALL -ldl -lpthread -lm
+
+all: $(SHLIB)
+
+savvy/target/release/librwasmtime_savvy.a:
+	cd savvy && cargo build --release

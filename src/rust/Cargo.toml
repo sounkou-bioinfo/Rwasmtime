@@ -1,0 +1,23 @@
+[package]
+name = "rwasmtime"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "rwasmtime"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+# Keep default tests R-free and fast. Backend features are exercised explicitly
+# by `make test-rust-backend`.
+savvy = []
+wasmtime = ["dep:wasmtime"]
+wasi = ["wasmtime", "dep:wasmtime-wasi"]
+component-model = ["wasmtime"]
+c-api = ["wasmtime"]
+
+[dependencies]
+wasmtime = { version = "43.0.1", default-features = false, optional = true, features = ["anyhow", "component-model", "component-model-async", "cranelift", "parallel-compilation", "runtime", "std", "threads", "wat"] }
+wasmtime-wasi = { version = "43.0.1", default-features = false, optional = true, features = ["p1"] }

@@ -1,0 +1,167 @@
+---
+title: "Sandbox REPL and webR guest protocol"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sandbox REPL and webR guest protocol}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+# No generic REPL is provided by Wasmtime
+
+A REPL is an application protocol around a persistent guest interpreter. Wasmtime
+can run a module or component, but it does not invent an evaluator for arbitrary
+guests. The target shape is like a MicroPython- or webR-in-Wasm runtime: the
+language VM lives inside the Wasm guest, keeps its own globals and loaded state,
+and exposes a small protocol that lets R send source text and receive structured
+results. `Rwasmtime` owns the ergonomic R session API; it must not fake the
+sandbox by evaluating code in host R.
+
+`wt_repl()` therefore wraps explicit guest protocols:
+
+1. **Component protocol**: the guest exports an evaluator such as
+   `eval: func(code: string) -> repl-result` on a persistent component instance.
+2. **Core-memory protocol**: the guest is a core module with exported memory plus
+   functions such as `alloc(len)`, `eval(ptr, len)`, `result_ptr()`, and
+   `result_len()`. R copies UTF-8 source into guest memory, calls the evaluator,
+   and copies UTF-8 value/stdout/stderr/error fields back out when the guest
+   exposes the corresponding pointer/length exports.
+3. **Stdio protocol**: the guest is a persistent command loop; R writes code to
+   stdin and reads stdout/stderr through Wasmtime-managed pipes.
+4. **Callback protocol**: the guest and host exchange request/reply messages via
+   registered imports, usually for display, input, interrupts, or rich results.
+
+The protocol is explicit because completion, stdout, stderr, rich display,
+prompts, cancellation, interrupts, and partial input are not the same for every
+guest.
+
+# Generic component REPL
+
+```r
+rt <- wt_runtime_spec() |>
+  wt_with_compiler("cranelift") |>
+  wt_enable_features(component_model = TRUE, simd = TRUE) |>
+  wt_build_runtime()
+
+repl <- wt_app("guest-repl.component.wasm") |>
+  wt_as_component() |>
+  wt_with_runtime(rt) |>
+  wt_with_limits(wt_limits() |> wt_limit_memory("256MiB")) |>
+  wt_prepare() |>
+  wt_repl(protocol = "component", eval_export = "guest:repl/eval")
+
+repl |>
+  wt_repl_eval("1 + 1")
+```
+
+# Core-memory REPL
+
+The first real backend slice is the core-memory protocol. It is useful for
+MicroPython-style core Wasm guests and for bootstrapping language runtimes before
+a full component/WIT contract is available. The ABI is deliberately explicit:
+source and results are copied through guest memory, and the guest owns its
+persistent interpreter state.
+
+```r
+rt <- wt_runtime_spec() |>
+  wt_enable_features(component_model = FALSE) |>
+  wt_build_runtime()
+
+repl <- wt_app("micropython-like-core.wasm") |>
+  wt_as_module() |>
+  wt_with_runtime(rt) |>
+  wt_prepare() |>
+  wt_repl(
+    protocol = "core",
+    eval_export = "repl_eval",
+    memory = "memory",
+    alloc_export = "alloc",
+    result_ptr_export = "result_ptr",
+    result_len_export = "result_len",
+    stdout_ptr_export = "stdout_ptr",
+    stdout_len_export = "stdout_len",
+    stderr_ptr_export = "stderr_ptr",
+    stderr_len_export = "stderr_len",
+    error_ptr_export = "error_ptr",
+    error_len_export = "error_len",
+    status_export = "status",
+    complete_export = "complete"
+  )
+
+res <- repl |> wt_repl_eval("x = 1")
+res$value
+res$stdout
+res$stderr
+res$error
+```
+
+The contract above is not webR-specific and does not define rich display,
+interrupts, package loading, or stdin prompts by itself. Those should be layered
+onto the protocol deliberately rather than hidden in ad hoc host-side code.
+
+# webR as a guest
+
+A webR sandbox inside Wasmtime needs a webR build that is compatible with the
+chosen Wasmtime/WASI/component strategy. The R host must not fake this by calling
+host R. The adapter should describe a guest protocol and then let Wasmtime run
+that guest.
+
+```r
+webr <- wt_webr_repl(
+  source = "webr.component.wasm",
+  runtime = rt,
+  wasi = wt_wasi() |>
+    wt_wasi_stdio(stdin = "empty", stdout = "capture", stderr = "capture"),
+  limits = wt_limits() |>
+    wt_limit_memory("1GiB") |>
+    wt_limit_wall_time(ms = 10000),
+  callbacks = wt_callbacks() |>
+    wt_add_callback(
+      name = "rwasmtime:host/repl.display",
+      fun = function(payload) str(payload),
+      params = list(payload = "string"),
+      results = NULL
+    ),
+  protocol = "component",
+  eval_export = "webr:host/repl.eval"
+)
+
+webr |>
+  wt_repl_eval("sessionInfo()")
+
+webr |>
+  wt_repl_eval("fit <- lm(mpg ~ am, data = mtcars); coef(fit)")
+```
+
+# Async REPL operation
+
+Long REPL commands should use job handles. Callback servicing must be hidden in
+the adapter's platform machinery rather than exposed as a user drain loop.
+
+```r
+job <- webr |>
+  wt_repl_send("Sys.sleep(1); rnorm(5)") |>
+  wt_call_async("flush_repl")
+
+job |>
+  wt_await()
+```
+
+The exact backend shape may differ, but the API rule does not: code runs in the
+Wasm guest, R callbacks cross through the broker, and the binding layer is
+responsible for platform callback wake/synchronization while `wt_await()` waits.
+
+# Mock REPL
+
+The scaffold includes `protocol = "mock"` for tinytest coverage only.
+
+```r
+mock <- wt_repl(protocol = "mock")
+mock |> wt_repl_eval("1 + 1")
+```
+
+This is not sandboxed execution and must not be used as the webR implementation.

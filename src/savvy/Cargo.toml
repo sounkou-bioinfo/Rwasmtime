@@ -1,0 +1,19 @@
+[package]
+name = "rwasmtime_savvy"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "rwasmtime_savvy"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+rwasmtime = { path = "../rust", features = ["c-api", "wasi"] }
+savvy = { version = "0.10.2", default-features = false }
+wasmtime = { version = "43.0.1", default-features = false, features = ["anyhow", "component-model", "component-model-async", "cranelift", "parallel-compilation", "runtime", "std", "threads", "wat"] }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

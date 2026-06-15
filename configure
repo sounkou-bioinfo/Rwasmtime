@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+WASM_TARGET=""
+case " $* " in
+  *"--host=wasm32-unknown-emscripten"*) WASM_TARGET="true" ;;
+esac
+if [ "$(uname)" = "Emscripten" ]; then
+  WASM_TARGET="true"
+fi
+if ${CC:-cc} --version 2>/dev/null | grep -qi emscripten; then
+  WASM_TARGET="true"
+fi
+
+if [ "${WASM_TARGET}" = "true" ]; then
+  cp src/Makevars.wasm.in src/Makevars
+else
+  case "${RWASMTIME_RUST_BACKEND:-0}" in
+    1|yes|true|TRUE)
+      cp src/Makevars.rust.in src/Makevars
+      ;;
+    *)
+      cp src/Makevars.in src/Makevars
+      ;;
+  esac
+fi

@@ -1,0 +1,57 @@
+source(system.file("tinytest", "helper-rwasmtime.R", package = "Rwasmtime"))
+
+repl <- wt_repl(protocol = "mock")
+expect_class(repl, "WtRepl")
+
+res <- repl |> wt_repl_eval("1 + 1")
+expect_class(res, "WtReplResult")
+expect_true(grepl("1 \\+ 1", res$stdout))
+expect_equal(wt_repl_history(repl), "1 + 1")
+info <- wt_repl_info(repl)
+expect_class(info, "WtReplInfo")
+expect_true(grepl("<WtReplInfo>", capture.output(print(info))[[1L]], fixed = TRUE))
+expect_equal(info$protocol, "mock")
+expect_equal(info$guest, "mock")
+expect_true(is.null(res$value))
+
+component_repl <- wt_repl(protocol = "component", eval_export = "guest:repl/eval")
+err <- tryCatch(component_repl |> wt_repl_send("1 + 1"), error = identity)
+expect_true(inherits(err, "rwasmtime_not_implemented"))
+expect_equal(wt_repl_history(component_repl), character())
+err <- tryCatch(wt_repl(protocol = "component", eval_export = ""), error = identity)
+expect_equal(conditionMessage(err), "component/callback/core REPL protocols require eval_export")
+err <- tryCatch(wt_repl(protocol = "mock", guest = "webR"), error = identity)
+expect_equal(conditionMessage(err), "mock REPL protocol is reserved for scaffold tests")
+err <- tryCatch(wt_repl(protocol = "core", eval_export = ""), error = identity)
+expect_equal(conditionMessage(err), "component/callback/core REPL protocols require eval_export")
+err <- tryCatch(wt_repl(prompt = ""), error = identity)
+expect_equal(conditionMessage(err), "prompt must be a non-empty string")
+
+core_repl <- wt_repl(protocol = "core", eval_export = "repl_eval")
+core_info <- wt_repl_info(core_repl)
+expect_class(core_info, "WtReplInfo")
+expect_equal(core_info$protocol, "core")
+expect_equal(core_info$protocol_options$memory, "memory")
+err <- tryCatch(core_repl |> wt_repl_send("1 + 1"), error = identity)
+expect_true(inherits(err, "rwasmtime_not_implemented"))
+expect_equal(wt_repl_history(core_repl), character())
+
+repl <- repl |> wt_repl_close()
+closed_info <- wt_repl_info(repl)
+expect_class(closed_info, "WtReplInfo")
+expect_false(closed_info$open)
+
+webr <- wt_webr_repl(
+  source = "webr.component.wasm",
+  runtime = wt_build_runtime(wt_runtime_spec()),
+  protocol = "component"
+)
+expect_class(webr, "WtRepl")
+webr_info <- wt_repl_info(webr)
+expect_class(webr_info, "WtReplInfo")
+expect_equal(webr_info$guest, "webR")
+err <- tryCatch(webr |> wt_repl_eval("1 + 1"), error = identity)
+expect_true(inherits(err, "rwasmtime_not_implemented"))
+expect_equal(wt_repl_history(webr), character())
+err <- tryCatch(wt_webr_repl("webr.component.wasm", protocol = "component", eval_export = ""), error = identity)
+expect_equal(conditionMessage(err), "webR component REPL requires eval_export")

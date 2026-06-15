@@ -1,0 +1,127 @@
+---
+title: "Rwasmtime API boundaries"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Rwasmtime API boundaries}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+# API grammar
+
+`Rwasmtime` is pipe-first. The canonical grammar is:
+
+```r
+runtime <- wt_runtime_spec() |>
+  wt_with_compiler("cranelift", opt_level = "speed") |>
+  wt_enable_features(component_model = TRUE, simd = TRUE) |>
+  wt_build_runtime()
+
+wasi <- wt_wasi() |>
+  wt_wasi_stdio(stdin = "empty", stdout = "capture", stderr = "capture")
+
+limits <- wt_limits() |>
+  wt_limit_memory("512MiB") |>
+  wt_limit_wall_time(ms = 5000)
+
+callbacks <- wt_callbacks() |>
+  wt_add_callback(
+    name = "rwasmtime:host/callbacks.log",
+    fun = function(msg) message(msg),
+    params = list(msg = "string"),
+    results = NULL
+  )
+
+plugin <- wt_app("plugin.component.wasm") |>
+  wt_as_component() |>
+  wt_with_runtime(runtime) |>
+  wt_with_wasi(wasi) |>
+  wt_with_limits(limits) |>
+  wt_with_callbacks(callbacks) |>
+  wt_prepare()
+```
+
+Composition verbs return the same conceptual object. Terminal verbs return
+results, jobs, arrays, or memory reads.
+
+# Boundaries
+
+The Rust core owns Wasmtime runtime state and never calls the R API. The R/Savvy
+adapter owns R functions, conditions, protection, and main-thread evaluation.
+Callbacks from Wasm are not direct calls into R. They are request/reply messages
+through a callback broker.
+
+```text
+Wasmtime worker or async host function
+  -> build CallbackRequest
+  -> schedule it through the adapter callback bridge
+  -> for non-void callbacks, wait on native synchronization for CallbackReply
+
+R/Savvy adapter on the R main thread
+  -> wake through a POSIX input handler or Windows message pump
+  -> evaluate the registered R closure
+  -> serialize/rebuild CallbackReply
+  -> signal the waiting worker when a reply is required
+```
+
+Normal user code should not have to call a drain function. The intended backend
+mirrors the Rtinycc pattern: callbacks posted from worker-capable code are
+serviced automatically by platform event machinery, and generated/bound wrappers
+hide any main-thread pumping needed while a worker is running. `wt_drain_callbacks()`
+remains only as an advanced hook for adapter tests or unusual tight native loops
+that cannot yield to R's event loop.
+
+# WASI authority
+
+WASI is not implied by loading a guest. The guest receives no ambient filesystem,
+environment, stdio, random, clock, or network authority unless a `wt_wasi()`
+object grants it.
+
+# Arrays and memory
+
+Use component values for small structured values. Use explicit linear-memory
+buffers for large numeric vectors, matrices, and tensors.
+
+```r
+# Core-module guests can use the implemented copied linear-memory path.
+session <- core_plugin |> wt_new_session()
+
+xbuf <- session |>
+  wt_array_write(x, dtype = "f64", layout = "column-major")
+
+ans <- session |>
+  wt_call("fit", xbuf)
+```
+
+The default implementation must copy data. Borrowed memory views must be explicit
+about lifetime and mutability. Component-value array transport remains a future
+WIT/value-conversion boundary.
+
+# Component and WIT values
+
+Component calls cross a copied-value boundary. Small structured arguments should
+be represented as WIT/component values; large numeric payloads should use explicit
+linear-memory or arena-backed array transport. The Rust core must not receive R
+objects, `SEXP`, ALTREP, or borrowed R memory as WIT values. The Savvy adapter is
+responsible for converting R inputs into owned Rust value trees and converting
+owned results back to R.
+
+# AOT and compiler choices
+
+AOT is an artifact layer, not a separate API family. Core-module AOT is the
+implemented native artifact path today:
+
+```r
+artifact <- runtime |>
+  wt_compile("plugin.wasm", kind = "module") |>
+  wt_aot_save("plugin.cwasm", overwrite = TRUE)
+```
+
+Component AOT remains a future boundary. Every AOT artifact must include
+compatibility metadata: Wasmtime version, target, compiler strategy,
+optimization level, enabled features, component model state, and Rwasmtime
+artifact format version.

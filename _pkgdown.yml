@@ -1,0 +1,99 @@
+url: https://sounkou-bioinfo.github.io/Rwasmtime/
+template:
+  bootstrap: 5
+
+reference:
+  - title: Runtime construction
+    contents:
+      - wt_runtime_spec
+      - wt_with_compiler
+      - wt_enable_features
+      - wt_with_aot
+      - wt_with_allocator
+      - wt_build_runtime
+  - title: WASI, limits, and callbacks
+    contents:
+      - wt_wasi
+      - wt_wasi_args
+      - wt_wasi_env
+      - wt_wasi_preopen
+      - wt_wasi_stdio
+      - wt_wasi_network
+      - wt_limits
+      - wt_limit_memory
+      - wt_limit_tables
+      - wt_limit_instances
+      - wt_limit_fuel
+      - wt_limit_wall_time
+      - wt_limit_callbacks
+      - wt_callback_policy
+      - wt_callbacks
+      - wt_add_callback
+  - title: App preparation and execution
+    contents:
+      - wt_app
+      - wt_as_module
+      - wt_as_component
+      - wt_with_runtime
+      - wt_with_wasi
+      - wt_with_limits
+      - wt_with_callbacks
+      - wt_with_arrays
+      - wt_with_wit
+      - wt_prepare
+      - wt_new_session
+      - wt_call
+      - wt_exec
+      - wt_call_async
+      - wt_poll
+      - wt_await
+      - wt_result
+      - wt_cancel
+      - wt_drain_callbacks
+  - title: Low-level artifacts, stores, and linkers
+    contents:
+      - wt_compile
+      - wt_aot_save
+      - wt_aot_load
+      - wt_artifact_info
+      - wt_artifact_compatible
+      - wt_store
+      - wt_linker
+      - wt_link_wasi
+      - wt_link_callbacks
+      - wt_instantiate
+  - title: Memory and arrays
+    contents:
+      - wt_memory
+      - wt_memory_size
+      - wt_memory_grow
+      - wt_memory_read
+      - wt_memory_write
+      - wt_memory_view
+      - wt_array_write
+      - wt_as_array
+      - wt_with_temp_array
+      - wt_arg_array
+      - wt_free
+  - title: Components and WIT metadata
+    contents:
+      - wt_component
+      - wt_component_exports
+      - wt_component_imports
+  - title: REPL protocols
+    contents:
+      - wt_repl
+      - wt_webr_repl
+      - wt_repl_send
+      - wt_repl_read
+      - wt_repl_eval
+      - wt_repl_history
+      - wt_repl_info
+      - wt_repl_close
+
+articles:
+  - title: Core concepts
+    navbar: ~
+    contents:
+      - api-boundaries
+      - sandbox-repl-webr

@@ -1,0 +1,95 @@
+name: R package
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  r-api-tinytest:
+    name: R API tinytest (default backend, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::tinytest
+      - name: Fast non-network tests
+        run: make test-fast
+
+  c-api-contract:
+    name: Installed C API contract (default and Rust backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::tinytest
+            github::sounkou-bioinfo/Rtinycc
+      - name: Rust core tests without heavy backend features
+        run: make test-rust
+      - name: Installed default C API contract
+        run: make test-c-api
+      - name: Installed Rust-backed C API contract
+        run: make test-c-api-rust-backend
+
+  native-rust-backend:
+    name: Native Wasmtime backend tinytests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::tinytest
+      - name: Native backend behavior tests
+        run: make test-r-native-rust-backend
+
+  r-cmd-check:
+    name: R CMD check (default backend, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::rcmdcheck
+            any::tinytest
+            any::knitr
+            any::rmarkdown
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual")'
