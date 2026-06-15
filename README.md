@@ -133,10 +133,10 @@ limits <- wt_limits() |>
   wt_limit_wall_time(ms = 5000) |>
   wt_limit_callbacks(max_calls = 10000, timeout_ms = 1000)
 
-wasi
+wt_readme_stable_print(wasi)
 #> <WtWasi> args=2 env=2 preopens=1
 #>   stdio: stdin=empty stdout=capture stderr=capture
-#>   preopens: /data=>/tmp/Rtmp5oFokw (ro)
+#>   preopens: /data=><tempdir> (ro)
 #>   ambient: network=FALSE clocks=FALSE random=FALSE
 limits
 #> <WtLimits> memory=536870912 tables=20000 instances=32
@@ -263,11 +263,10 @@ artifact <- rt |>
   wt_compile("stats_plugin.component.wasm", kind = "component") |>
   wt_aot_save(file.path(tempdir(), "stats_plugin.cwasm"), overwrite = TRUE)
 
-artifact |>
-  wt_artifact_info()
+wt_readme_stable_print(artifact |> wt_artifact_info())
 #> <WtArtifactInfo> kind=component backend=pending
 #>   input: stats_plugin.component.wasm
-#>   aot_path: /tmp/Rtmp5oFokw/stats_plugin.cwasm
+#>   aot_path: <tempdir>/stats_plugin.cwasm
 #>   compiler: cranelift opt=speed
 #>   features: component_model=TRUE simd=TRUE relaxed_simd=FALSE memory64=FALSE threads=FALSE
 

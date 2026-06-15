@@ -13,6 +13,12 @@ wt_readme_result <- function(x) {
     x
   }
 }
+wt_readme_stable_print <- function(x) {
+  lines <- capture.output(print(x))
+  tmp <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  lines <- gsub(tmp, "<tempdir>", lines, fixed = TRUE)
+  cat(lines, sep = "\n")
+}
 ```
 
 # Rwasmtime
@@ -137,7 +143,7 @@ limits <- wt_limits() |>
   wt_limit_wall_time(ms = 5000) |>
   wt_limit_callbacks(max_calls = 10000, timeout_ms = 1000)
 
-wasi
+wt_readme_stable_print(wasi)
 limits
 ```
 
@@ -251,8 +257,7 @@ artifact <- rt |>
   wt_compile("stats_plugin.component.wasm", kind = "component") |>
   wt_aot_save(file.path(tempdir(), "stats_plugin.cwasm"), overwrite = TRUE)
 
-artifact |>
-  wt_artifact_info()
+wt_readme_stable_print(artifact |> wt_artifact_info())
 
 plugin_from_artifact <- wt_app(artifact) |>
   wt_with_runtime(rt) |>
