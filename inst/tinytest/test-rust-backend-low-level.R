@@ -66,14 +66,34 @@ expect_equal(file_instance |> wt_call("add", 20L, 22L), 42L)
 compile_err <- expect_error_class(rt |> wt_compile("(module BAD", kind = "module"), "rwasmtime_compile_error")
 expect_false(inherits(compile_err, "rwasmtime_unsupported_feature"))
 
-err <- tryCatch(
-  wt_runtime_spec() |>
-    wt_enable_features(exceptions = TRUE) |>
-    wt_build_runtime(),
-  error = identity
+modern_exception_tag_wasm <- as.raw(c(
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+  0x01, 0x09, 0x02, 0x60, 0x01, 0x7f, 0x00, 0x60, 0x00, 0x01, 0x7f,
+  0x03, 0x02, 0x01, 0x01,
+  0x0d, 0x03, 0x01, 0x00, 0x00,
+  0x07, 0x0a, 0x01, 0x06, 0x61, 0x6e, 0x73, 0x77, 0x65, 0x72, 0x00, 0x00,
+  0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2a, 0x0b
+))
+unsupported_exn <- expect_error_class(
+  rt |> wt_compile(modern_exception_tag_wasm, kind = "module"),
+  "rwasmtime_unsupported_feature"
 )
-expect_true(inherits(err, "rwasmtime_unsupported_feature"))
-expect_true(grepl("wasm exceptions", conditionMessage(err), fixed = TRUE))
+expect_true(inherits(unsupported_exn, "rwasmtime_compile_error"))
+expect_true(grepl("exceptions proposal not enabled", conditionMessage(unsupported_exn), fixed = TRUE))
+
+rt_exn <- wt_runtime_spec() |>
+  wt_enable_features(exceptions = TRUE) |>
+  wt_build_runtime()
+exn_artifact <- rt_exn |> wt_compile(modern_exception_tag_wasm, kind = "module")
+exn_instance <- exn_artifact |> wt_instantiate(store = rt_exn |> wt_store(), linker = rt_exn |> wt_linker())
+expect_equal(exn_instance |> wt_call("answer"), 42L)
+legacy_err <- expect_error_class(
+  wt_runtime_spec() |>
+    wt_enable_features(exceptions = TRUE, legacy_exceptions = TRUE) |>
+    wt_build_runtime(),
+  "rwasmtime_unsupported_feature"
+)
+expect_true(grepl("legacy_exceptions", conditionMessage(legacy_err), fixed = TRUE))
 
 rt2 <- wt_runtime_spec() |> wt_build_runtime()
 err <- tryCatch(artifact |> wt_instantiate(store = rt2 |> wt_store(), linker = linker), error = identity)

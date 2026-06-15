@@ -483,11 +483,12 @@ A useful real target is Simon Willison's
 [`micropython-wasm`](https://github.com/simonw/micropython-wasm), which ships a
 WASI MicroPython artifact for Wasmtime. It validates the same high-level shape:
 run MicroPython as a guest, pass source through explicit host/guest channels,
-capture stdout/stderr, and keep state in a persistent session. Current
-Rwasmtime cannot run that artifact yet because it uses Wasm exception handling
-and imports custom `micropython_wasm.host_call` / `host_result_cap` functions in
-addition to WASI. That makes it an honest next integration test once
-`exceptions = TRUE` and typed custom host imports are implemented.
+capture stdout/stderr, and keep state in a persistent session. Rwasmtime can now
+run the command-style subset of that artifact in native builds with
+`exceptions = TRUE`, WASIp1, `host_result_cap` as a scalar core callback, and
+`host_call` declared with `abi = "core_memory_request"`. The persistent session
+adapter remains future work because it needs background guest execution and an
+explicit request/reply queue, not a host-R shortcut.
 
 ```{r core-repl-concrete}
 core_repl_wat <- '

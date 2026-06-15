@@ -25,20 +25,27 @@
   link/import, instantiation, unsupported-feature, trap, callback, limit, and
   timeout boundaries instead of leaving compile/link/setup failures as plain
   Savvy `simpleError`s.
-- The sandbox REPL documentation now calls out Simon Willison's
-  `micropython-wasm` as a concrete future integration target: it validates the
-  guest-owned persistent-session protocol shape under Wasmtime/WASI, but still
-  requires modern Wasm exception support and typed custom host imports before it
-  can run as a native Rwasmtime test.
+- The native backend now supports modern Wasm exception modules when users set
+  `exceptions = TRUE`. `legacy_exceptions` remains an honest unsupported
+  boundary because current webR `R.wasm` uses the Emscripten legacy
+  exception/setjmp path that the Wasmtime/Cranelift configuration here still
+  rejects.
+- The low-level native linker can now combine WASIp1 imports with R-backed core
+  callback imports. A new explicit `abi = "core_memory_request"` callback mode
+  reads copied `(name, payload)` byte ranges from the guest's exported `memory`,
+  calls R on the main thread, and writes copied response bytes back to guest
+  memory. This is sufficient for the command-style Simon Willison
+  `micropython-wasm` artifact to compile and run simple host-call examples under
+  Rwasmtime; persistent session orchestration remains future work.
 - `wt_compile()` in native backend builds now accepts raw WebAssembly module
   bytes and character file paths to `.wasm` files, in addition to WAT text. The
   Savvy adapter passes raw bytes to the R-free Rust core without treating binary
   Wasm as a C/R string; low-level installed tinytests cover raw and file-backed
   binary modules. Runtime feature specs now include explicit `exceptions` and
-  `legacy_exceptions` toggles, but this Wasmtime backend build still rejects
-  them honestly: current released Wasmtime/Cranelift and the probed git-main
-  source do not support Emscripten legacy exception/setjmp modules such as the
-  current webR `R.wasm` built with `-s SUPPORT_LONGJMP=wasm`.
+  `legacy_exceptions` toggles; modern exception tags compile with
+  `exceptions = TRUE`, while current webR `R.wasm` remains blocked by
+  Emscripten legacy exceptions plus Emscripten dylink/GOT/env side-module ABI
+  requirements.
 - `README.Rmd` no longer catches expected failures with `tryCatch()`. Expected
   failing examples now use knitr chunk `error=TRUE`, while examples that should
   run in native backend builds execute directly.

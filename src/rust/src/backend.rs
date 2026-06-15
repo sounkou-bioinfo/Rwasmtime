@@ -75,6 +75,14 @@ pub type CoreHostFuncCallback = dyn Fn(&str, &[wasmtime::Val], &mut [wasmtime::V
     + Send
     + Sync
     + 'static;
+pub type CoreHostMemoryRequestCallback =
+    dyn Fn(&str, &[u8], &[u8], u32) -> wasmtime::Result<Vec<u8>> + Send + Sync + 'static;
+
+#[derive(Clone)]
+enum CoreHostFuncCallbackKind {
+    Core(Arc<CoreHostFuncCallback>),
+    MemoryRequest(Arc<CoreHostMemoryRequestCallback>),
+}
 
 const UNLIMITED_FUEL_SENTINEL: u64 = u64::MAX / 4;
 const UNLIMITED_EPOCH_DEADLINE: u64 = u64::MAX / 4;
@@ -194,7 +202,7 @@ pub struct CoreHostFunc {
     pub name: String,
     pub params: Vec<wasmtime::ValType>,
     pub results: Vec<wasmtime::ValType>,
-    callback: Arc<CoreHostFuncCallback>,
+    callback: CoreHostFuncCallbackKind,
 }
 
 impl fmt::Debug for CoreHostFunc {
@@ -221,13 +229,149 @@ impl CoreHostFunc {
             name: name.into(),
             params,
             results,
-            callback,
+            callback: CoreHostFuncCallbackKind::Core(callback),
+        }
+    }
+
+    pub fn new_memory_request(
+        module: impl Into<String>,
+        name: impl Into<String>,
+        callback: Arc<CoreHostMemoryRequestCallback>,
+    ) -> Self {
+        Self {
+            module: module.into(),
+            name: name.into(),
+            params: vec![
+                wasmtime::ValType::I32,
+                wasmtime::ValType::I32,
+                wasmtime::ValType::I32,
+                wasmtime::ValType::I32,
+                wasmtime::ValType::I32,
+                wasmtime::ValType::I32,
+            ],
+            results: vec![wasmtime::ValType::I32],
+            callback: CoreHostFuncCallbackKind::MemoryRequest(callback),
         }
     }
 
     fn key(&self) -> String {
         format!("{}::{}", self.module, self.name)
     }
+}
+
+fn define_core_host_funcs<T: 'static>(
+    engine: &wasmtime::Engine,
+    linker: &mut wasmtime::Linker<T>,
+    host_funcs: Vec<CoreHostFunc>,
+) -> Result<()> {
+    for host in host_funcs {
+        let key = host.key();
+        let key_for_callback = key.clone();
+        let ty = wasmtime::FuncType::new(engine, host.params.clone(), host.results.clone());
+        let callback = host.callback.clone();
+        linker
+            .func_new(
+                &host.module,
+                &host.name,
+                ty,
+                move |mut caller, args, results| match &callback {
+                    CoreHostFuncCallbackKind::Core(callback) => {
+                        callback(&key_for_callback, args, results)
+                    }
+                    CoreHostFuncCallbackKind::MemoryRequest(callback) => {
+                        invoke_core_memory_request(
+                            &mut caller,
+                            &key_for_callback,
+                            callback,
+                            args,
+                            results,
+                        )
+                    }
+                },
+            )
+            .map_err(|err| {
+                RwasmtimeError::runtime(format!("failed to link callback import `{key}`: {err}"))
+            })?;
+    }
+    Ok(())
+}
+
+fn invoke_core_memory_request<T: 'static>(
+    caller: &mut wasmtime::Caller<'_, T>,
+    key: &str,
+    callback: &Arc<CoreHostMemoryRequestCallback>,
+    args: &[wasmtime::Val],
+    results: &mut [wasmtime::Val],
+) -> wasmtime::Result<()> {
+    let [wasmtime::Val::I32(name_ptr), wasmtime::Val::I32(name_len), wasmtime::Val::I32(payload_ptr), wasmtime::Val::I32(payload_len), wasmtime::Val::I32(result_ptr), wasmtime::Val::I32(result_cap)] =
+        args
+    else {
+        return Err(wasmtime::format_err!(
+            "core memory request callback `{key}` received an unexpected argument signature"
+        ));
+    };
+    if results.len() != 1 {
+        return Err(wasmtime::format_err!(
+            "core memory request callback `{key}` received an unexpected result signature"
+        ));
+    }
+    let Some(memory) = caller
+        .get_export("memory")
+        .and_then(|item| item.into_memory())
+    else {
+        results[0] = wasmtime::Val::I32(-1);
+        return Ok(());
+    };
+    let name_ptr = nonnegative_i32_to_usize(*name_ptr, "name_ptr", key)?;
+    let name_len = nonnegative_i32_to_usize(*name_len, "name_len", key)?;
+    let payload_ptr = nonnegative_i32_to_usize(*payload_ptr, "payload_ptr", key)?;
+    let payload_len = nonnegative_i32_to_usize(*payload_len, "payload_len", key)?;
+    let result_ptr = nonnegative_i32_to_usize(*result_ptr, "result_ptr", key)?;
+    let result_cap_i32 = *result_cap;
+    if result_cap_i32 < 0 {
+        return Err(wasmtime::format_err!(
+            "core memory request callback `{key}` received negative result_cap"
+        ));
+    }
+    let result_cap = result_cap_i32 as u32;
+
+    let mut name = vec![0; name_len];
+    memory.read(&*caller, name_ptr, &mut name).map_err(|_| {
+        wasmtime::format_err!("core memory request callback `{key}` could not read name bytes")
+    })?;
+    let mut payload = vec![0; payload_len];
+    memory
+        .read(&*caller, payload_ptr, &mut payload)
+        .map_err(|_| {
+            wasmtime::format_err!(
+                "core memory request callback `{key}` could not read payload bytes"
+            )
+        })?;
+
+    let response = callback(key, &name, &payload, result_cap)?;
+    let response_len = i32::try_from(response.len()).map_err(|_| {
+        wasmtime::format_err!(
+            "core memory request callback `{key}` returned more than i32::MAX bytes"
+        )
+    })?;
+    if response.len() <= result_cap as usize {
+        memory.write(caller, result_ptr, &response).map_err(|_| {
+            wasmtime::format_err!(
+                "core memory request callback `{key}` could not write result bytes"
+            )
+        })?;
+    }
+    results[0] = wasmtime::Val::I32(response_len);
+    Ok(())
+}
+
+fn nonnegative_i32_to_usize(value: i32, label: &str, key: &str) -> wasmtime::Result<usize> {
+    if value < 0 {
+        return Err(wasmtime::format_err!(
+            "core memory request callback `{key}` received negative {label}"
+        ));
+    }
+    Ok(value as usize)
 }
 
 fn describe_core_item(module: Option<&str>, name: &str, ty: wasmtime::ExternType) -> CoreItem {
@@ -330,28 +474,7 @@ impl CoreModule {
         limits: CoreExecutionLimits,
     ) -> Result<CoreInstance> {
         let mut linker = wasmtime::Linker::new(self.module.engine());
-        for host in host_funcs {
-            let key = host.key();
-            let key_for_callback = key.clone();
-            let ty = wasmtime::FuncType::new(
-                self.module.engine(),
-                host.params.clone(),
-                host.results.clone(),
-            );
-            let callback = host.callback.clone();
-            linker
-                .func_new(
-                    &host.module,
-                    &host.name,
-                    ty,
-                    move |_caller, args, results| callback(&key_for_callback, args, results),
-                )
-                .map_err(|err| {
-                    RwasmtimeError::runtime(format!(
-                        "failed to link callback import `{key}`: {err}"
-                    ))
-                })?;
-        }
+        define_core_host_funcs(self.module.engine(), &mut linker, host_funcs)?;
         let mut store = new_core_store(self.module.engine(), limits)?;
         let wall_clock = configure_store_limits(&mut store, limits)?;
         let _wall_time_guard = enter_wall_time_call(&mut store, &wall_clock);
@@ -371,6 +494,16 @@ impl CoreModule {
         wasi: &WasiSpec,
         limits: CoreExecutionLimits,
     ) -> Result<CoreInstance> {
+        self.instantiate_wasi_p1_with_host_funcs(wasi, Vec::new(), limits)
+    }
+
+    #[cfg(feature = "wasi")]
+    pub fn instantiate_wasi_p1_with_host_funcs(
+        &self,
+        wasi: &WasiSpec,
+        host_funcs: Vec<CoreHostFunc>,
+        limits: CoreExecutionLimits,
+    ) -> Result<CoreInstance> {
         wasi.validate()?;
         validate_supported_wasi_backend(wasi)?;
 
@@ -379,6 +512,7 @@ impl CoreModule {
             &mut state.wasi
         })
         .map_err(|err| RwasmtimeError::runtime(format!("failed to link WASIp1 imports: {err}")))?;
+        define_core_host_funcs(self.module.engine(), &mut linker, host_funcs)?;
 
         let (state, stdout_capture, stderr_capture) = build_wasi_p1_state(wasi, limits)?;
         let mut store = new_wasi_p1_store(self.module.engine(), state)?;
@@ -908,6 +1042,18 @@ impl WasmtimeRuntime {
         module.instantiate_wasi_p1(wasi, limits)
     }
 
+    #[cfg(feature = "wasi")]
+    pub fn instantiate_core_module_wasi_p1_with_host_funcs(
+        &self,
+        module: &CoreModule,
+        wasi: &WasiSpec,
+        host_funcs: Vec<CoreHostFunc>,
+        limits: CoreExecutionLimits,
+    ) -> Result<CoreInstance> {
+        self.ensure_module_engine(module)?;
+        module.instantiate_wasi_p1_with_host_funcs(wasi, host_funcs, limits)
+    }
+
     fn ensure_module_engine(&self, module: &CoreModule) -> Result<()> {
         if !wasmtime::Engine::same(&self.engine, module.module.engine()) {
             return Err(RwasmtimeError::invalid_argument(
@@ -1037,19 +1183,20 @@ fn build_config(spec: &RuntimeSpec) -> Result<wasmtime::Config> {
     config.wasm_multi_memory(spec.features.multi_memory);
     config.wasm_memory64(spec.features.memory64);
     config.wasm_threads(spec.features.threads);
+    config.wasm_exceptions(spec.features.exceptions);
 
     Ok(config)
 }
 
 fn validate_backend_features(features: &FeatureSpec) -> Result<()> {
-    if features.exceptions || features.legacy_exceptions {
+    if features.legacy_exceptions {
         return Err(RwasmtimeError::invalid_argument(
-            "wasm exceptions are not supported by this Wasmtime backend build",
+            "legacy_exceptions are not supported by this Wasmtime backend build",
         ));
     }
     if features.gc {
         return Err(RwasmtimeError::invalid_argument(
-            "gc requires a Wasmtime backend build with GC enabled",
+            "gc proposal support is not exposed by this Rwasmtime backend yet",
         ));
     }
     Ok(())
@@ -1355,6 +1502,22 @@ mod tests {
             i32.add))
     "#;
 
+    fn modern_exception_tag_module() -> Vec<u8> {
+        vec![
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+            // Type section: tag payload type `(i32) -> ()` and function `() -> i32`.
+            0x01, 0x09, 0x02, 0x60, 0x01, 0x7f, 0x00, 0x60, 0x00, 0x01, 0x7f,
+            // Function section: one function with type index 1.
+            0x03, 0x02, 0x01, 0x01,
+            // Tag section: one modern exception tag with type index 0.
+            0x0d, 0x03, 0x01, 0x00, 0x00,
+            // Export section: export the function as `answer`.
+            0x07, 0x0a, 0x01, 0x06, 0x61, 0x6e, 0x73, 0x77, 0x65, 0x72, 0x00, 0x00,
+            // Code section: `i32.const 42`.
+            0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2a, 0x0b,
+        ]
+    }
+
     const COMPONENT_IMPORT_WAT: &str = r#"
         (component
           (import "host-add" (func (param "x" s32) (param "y" s32) (result s32))))
@@ -1428,14 +1591,54 @@ mod tests {
     }
 
     #[test]
-    fn backend_rejects_wasm_exceptions_until_supported_by_wasmtime_path() {
-        let err = RuntimeSpec::new()
+    fn backend_supports_modern_wasm_exceptions_when_enabled() {
+        let bytes = modern_exception_tag_module();
+        let default_runtime = RuntimeSpec::new()
+            .compiler(CompilerSpec::cranelift().speed())
+            .features(FeatureSpec::new().component_model(false))
+            .build_wasmtime()
+            .expect("default runtime should build");
+        let err = default_runtime
+            .compile_core(&bytes)
+            .expect_err("tag section requires exceptions to be enabled");
+        assert!(
+            err.message.contains("exceptions proposal not enabled"),
+            "{}",
+            err.message
+        );
+
+        let runtime = RuntimeSpec::new()
             .compiler(CompilerSpec::cranelift().speed())
             .features(FeatureSpec::new().component_model(false).exceptions(true))
             .build_wasmtime()
-            .expect_err("exceptions must fail honestly until the backend supports them");
+            .expect("modern Wasm exceptions should be supported by this backend build");
+        let module = runtime
+            .compile_core(&bytes)
+            .expect("modern exception tag module should compile when exceptions are enabled");
+        let exports = module.exports();
+        assert!(exports.iter().any(|item| item.name == "answer"));
+        let mut instance = runtime
+            .instantiate_core_module(&module, CoreExecutionLimits::none())
+            .expect("tag-only module should instantiate");
+        let mut results = [wasmtime::Val::I32(0)];
+        instance.call_export("answer", &[], &mut results).unwrap();
+        assert_eq!(results[0].unwrap_i32(), 42);
+    }
+
+    #[test]
+    fn backend_still_rejects_legacy_wasm_exceptions() {
+        let err = RuntimeSpec::new()
+            .compiler(CompilerSpec::cranelift().speed())
+            .features(
+                FeatureSpec::new()
+                    .component_model(false)
+                    .exceptions(true)
+                    .legacy_exceptions(true),
+            )
+            .build_wasmtime()
+            .expect_err("legacy exceptions remain unsupported by this backend");
         assert_eq!(err.kind, RwasmtimeErrorKind::InvalidArgument);
-        assert!(err.message.contains("wasm exceptions"));
+        assert!(err.message.contains("legacy_exceptions"));
     }
 
     #[test]

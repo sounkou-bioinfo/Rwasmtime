@@ -19,5 +19,5 @@ component-model = ["wasmtime"]
 c-api = ["wasmtime"]
 
 [dependencies]
-wasmtime = { version = "43.0.1", default-features = false, optional = true, features = ["anyhow", "component-model", "component-model-async", "cranelift", "parallel-compilation", "runtime", "std", "threads", "wat"] }
+wasmtime = { version = "43.0.1", default-features = false, optional = true, features = ["anyhow", "component-model", "component-model-async", "cranelift", "gc", "gc-null", "parallel-compilation", "runtime", "std", "threads", "wat"] }
 wasmtime-wasi = { version = "43.0.1", default-features = false, optional = true, features = ["p1"] }

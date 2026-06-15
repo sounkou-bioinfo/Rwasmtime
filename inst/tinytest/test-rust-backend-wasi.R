@@ -48,6 +48,17 @@ binary_wasi_wat <- '
     (drop (call $fd_write (i32.const 2) (i32.const 8) (i32.const 1) (i32.const 28)))))
 '
 
+wasi_callback_wat <- '
+(module
+  (import "wasi_snapshot_preview1" "args_sizes_get"
+    (func $args_sizes_get (param i32 i32) (result i32)))
+  (import "r" "answer" (func $answer (result i32)))
+  (memory (export "memory") 1)
+  (func (export "run") (result i32)
+    (drop (call $args_sizes_get (i32.const 0) (i32.const 4)))
+    (call $answer)))
+'
+
 rt <- rwasmtime_backend_runtime()
 if (!identical(rt$backend, "native")) exit_file("native Rust/Wasmtime backend is not available in this install")
 wasi <- wt_wasi() |>
@@ -95,6 +106,16 @@ low_file_stdin_instance <- artifact |>
   wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker() |> wt_link_wasi(low_file_stdin_wasi))
 low_file_stdin_result <- wt_call(low_file_stdin_instance, "_start")
 expect_equal(low_file_stdin_result$stdout, "low file stdin")
+
+callbacks <- wt_callbacks() |>
+  wt_add_callback("answer", function() 42L, module = "r", abi = "core")
+wasi_callback_artifact <- rt |> wt_compile(wasi_callback_wat, kind = "module")
+wasi_callback_instance <- wasi_callback_artifact |>
+  wt_instantiate(
+    store = rt |> wt_store(),
+    linker = rt |> wt_linker() |> wt_link_wasi(wt_wasi() |> wt_wasi_args("guest")) |> wt_link_callbacks(callbacks)
+  )
+expect_equal(wasi_callback_instance |> wt_call("run"), 42L)
 
 nul_stdin_file <- tempfile()
 writeBin(as.raw(c(0x41, 0x00, 0x42)), nul_stdin_file, useBytes = TRUE)

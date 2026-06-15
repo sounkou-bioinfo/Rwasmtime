@@ -116,11 +116,13 @@ MicroPython. The persistent form blocks in guest code on a host function named
 `micropython_wasm.host_call("__session_next__", ...)`, executes snippets in one
 MicroPython globals dictionary, and reports results through another host call.
 That is exactly the kind of guest-owned REPL protocol Rwasmtime should support.
-The current blockers are explicit, not conceptual: the artifact uses Wasm
-exception handling, and it imports custom `micropython_wasm.host_call` and
-`host_result_cap` functions in addition to WASI. Rwasmtime therefore needs
-`exceptions = TRUE` support and typed custom host imports before this can become
-a native integration test.
+Rwasmtime can now cover the command-style subset of this shape: build the runtime
+with `exceptions = TRUE`, link WASIp1, link `host_result_cap` as a scalar core
+callback, and link `host_call` with `abi = "core_memory_request"` so copied name
+and payload bytes are read from guest memory and copied response bytes are
+written back. Persistent sessions still need explicit request queues, per-request
+stdout/stderr routing, and background guest execution; they should not be hidden
+behind host-side replay or host-R evaluation.
 
 # webR as a guest
 

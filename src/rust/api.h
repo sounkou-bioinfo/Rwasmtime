@@ -12,8 +12,9 @@ SEXP savvy_RwasmtimeNativeInstance_wasi_output__ffi(SEXP self__);
 SEXP savvy_RwasmtimeNativeModule_exports__ffi(SEXP self__);
 SEXP savvy_RwasmtimeNativeModule_imports__ffi(SEXP self__);
 SEXP savvy_RwasmtimeNativeModule_instantiate__ffi(SEXP self__, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms);
-SEXP savvy_RwasmtimeNativeModule_instantiate_callbacks__ffi(SEXP self__, SEXP c_arg__callback_modules, SEXP c_arg__callback_names, SEXP c_arg__callback_functions, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms);
+SEXP savvy_RwasmtimeNativeModule_instantiate_callbacks__ffi(SEXP self__, SEXP c_arg__callback_modules, SEXP c_arg__callback_names, SEXP c_arg__callback_abis, SEXP c_arg__callback_functions, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms);
 SEXP savvy_RwasmtimeNativeModule_instantiate_wasi_p1__ffi(SEXP self__, SEXP c_arg__args, SEXP c_arg__env_names, SEXP c_arg__env_values, SEXP c_arg__preopen_guest, SEXP c_arg__preopen_host, SEXP c_arg__preopen_readonly, SEXP c_arg__stdin, SEXP c_arg__stdout, SEXP c_arg__stderr, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms, SEXP c_arg__input);
+SEXP savvy_RwasmtimeNativeModule_instantiate_wasi_p1_callbacks__ffi(SEXP self__, SEXP c_arg__callback_modules, SEXP c_arg__callback_names, SEXP c_arg__callback_abis, SEXP c_arg__callback_functions, SEXP c_arg__args, SEXP c_arg__env_names, SEXP c_arg__env_values, SEXP c_arg__preopen_guest, SEXP c_arg__preopen_host, SEXP c_arg__preopen_readonly, SEXP c_arg__stdin, SEXP c_arg__stdout, SEXP c_arg__stderr, SEXP c_arg__memory_bytes, SEXP c_arg__table_elements, SEXP c_arg__instances, SEXP c_arg__fuel, SEXP c_arg__wall_time_ms, SEXP c_arg__input);
 SEXP savvy_RwasmtimeNativeModule_serialize__ffi(SEXP self__);
 
 // methods and associated functions for RwasmtimeNativeRuntime

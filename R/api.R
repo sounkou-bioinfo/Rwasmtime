@@ -363,6 +363,12 @@ rwasmtime_call_core_module_wasi_p1 <- function(module, wasi, limits = NULL) {
   rwasmtime_wasi_result(instance$wasi_output(), wasi = wasi)
 }
 
+rwasmtime_call_core_module_wasi_p1_callbacks <- function(module, wasi, callbacks, limits = NULL) {
+  instance <- rwasmtime_instantiate_core_module_wasi_p1_callbacks(module, wasi, callbacks, limits)
+  instance$call_core("_start", list())
+  rwasmtime_wasi_result(instance$wasi_output(), wasi = wasi)
+}
+
 rwasmtime_module_input <- function(input) {
   if (is.raw(input)) return(input)
   if (!is.character(input) || length(input) != 1L || is.na(input)) {
@@ -635,16 +641,17 @@ rwasmtime_wrap_core_callback <- function(entry, key) {
 rwasmtime_core_callback_parts <- function(callbacks) {
   entries <- callbacks$entries
   if (!length(entries)) {
-    return(list(callback_modules = character(), callback_names = character(), callback_functions = list()))
+    return(list(callback_modules = character(), callback_names = character(), callback_abis = character(), callback_functions = list()))
   }
-  bad <- vapply(entries, function(entry) !identical(entry$abi, "core"), logical(1), USE.NAMES = FALSE)
-  if (any(bad)) {
-    stop("native core callback imports currently require callbacks declared with abi = 'core'", call. = FALSE)
+  allowed <- vapply(entries, function(entry) entry$abi %in% c("core", "core_memory_request"), logical(1), USE.NAMES = FALSE)
+  if (any(!allowed)) {
+    stop("native core callback imports currently require callbacks declared with abi = 'core' or 'core_memory_request'", call. = FALSE)
   }
   keys <- names(entries)
   list(
     callback_modules = vapply(entries, function(entry) entry$module, character(1), USE.NAMES = FALSE),
     callback_names = vapply(entries, function(entry) entry$name, character(1), USE.NAMES = FALSE),
+    callback_abis = vapply(entries, function(entry) entry$abi, character(1), USE.NAMES = FALSE),
     callback_functions = Map(rwasmtime_wrap_core_callback, entries, keys)
   )
 }
@@ -688,6 +695,15 @@ rwasmtime_wasi_call_parts <- function(wasi) {
 
 rwasmtime_instantiate_core_module_wasi_p1 <- function(module, wasi, limits = NULL) {
   rwasmtime_with_instantiate_errors(do.call(module$ptr$instantiate_wasi_p1, c(rwasmtime_wasi_call_parts(wasi), rwasmtime_limit_args(limits))))
+}
+
+rwasmtime_instantiate_core_module_wasi_p1_callbacks <- function(module, wasi, callbacks, limits = NULL) {
+  rwasmtime_with_instantiate_errors(
+    do.call(
+      module$ptr$instantiate_wasi_p1_callbacks,
+      c(rwasmtime_core_callback_parts(callbacks), rwasmtime_wasi_call_parts(wasi), rwasmtime_limit_args(limits))
+    )
+  )
 }
 
 rwasmtime_call_instance_core <- function(instance, export, args) {
@@ -1492,7 +1508,7 @@ wt_add_callback <- function(.x,
                             params = NULL,
                             results = NULL,
                             module = NULL,
-                            abi = c("component", "core", "core_msgpack"),
+                            abi = c("component", "core", "core_msgpack", "core_memory_request"),
                             policy = wt_callback_policy()) {
   wt_check(.x, "WtCallbacks")
   abi <- match.arg(abi)
@@ -1505,7 +1521,7 @@ wt_add_callback <- function(.x,
   if (identical(abi, "component") && !is.null(module)) {
     stop("component callbacks must not set module", call. = FALSE)
   }
-  if (abi %in% c("core", "core_msgpack") && is.null(module)) {
+  if (abi %in% c("core", "core_msgpack", "core_memory_request") && is.null(module)) {
     stop("core callbacks require module", call. = FALSE)
   }
   if (identical(policy$mode, "fire_and_forget") && !is.null(results)) {
@@ -1864,9 +1880,8 @@ wt_instantiate <- function(.x, store, linker) {
   backend <- "pending"
   if (identical(.x$backend, "native") && !is.null(.x$ptr) && identical(.x$kind, "module")) {
     if (!is.null(linker$callbacks) && !is.null(linker$wasi)) {
-      wt_not_implemented("wt_instantiate native core module with both WASI and callbacks")
-    }
-    if (!is.null(linker$callbacks)) {
+      ptr <- rwasmtime_instantiate_core_module_wasi_p1_callbacks(.x, linker$wasi, linker$callbacks, store$limits)
+    } else if (!is.null(linker$callbacks)) {
       ptr <- rwasmtime_instantiate_core_module_callbacks(.x, linker$callbacks, store$limits)
     } else if (!is.null(linker$wasi)) {
       ptr <- rwasmtime_instantiate_core_module_wasi_p1(.x, linker$wasi, store$limits)

@@ -29,6 +29,20 @@ duplicate_import_wat <- '
     call $b))
 '
 
+memory_request_wat <- '
+(module
+  (import "r" "host_call"
+    (func $host_call (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 16) "ping")
+  (data (i32.const 32) "payload")
+  (func (export "call_host") (result i32)
+    (call $host_call
+      (i32.const 16) (i32.const 4)
+      (i32.const 32) (i32.const 7)
+      (i32.const 64) (i32.const 16))))
+'
+
 wasi_import_wat <- '
 (module
   (import "wasi_snapshot_preview1" "fd_write"
@@ -67,6 +81,29 @@ expect_equal(wt_call(instance, "run", 1L), 42L)
 expect_equal(calls$n, 1L)
 expect_equal(wt_call(instance, "run", 2L), 43L)
 expect_equal(calls$n, 2L)
+
+memory_callbacks <- wt_callbacks() |>
+  wt_add_callback(
+    module = "r",
+    name = "host_call",
+    fun = function(name, payload, result_cap) {
+      expect_equal(name, "ping")
+      expect_identical(payload, charToRaw("payload"))
+      expect_equal(result_cap, 16L)
+      charToRaw("pong")
+    },
+    abi = "core_memory_request"
+  )
+memory_request_artifact <- rt |> wt_compile(memory_request_wat, kind = "module")
+memory_request_instance <- memory_request_artifact |>
+  wt_instantiate(
+    store = rt |> wt_store(),
+    linker = rt |> wt_linker() |> wt_link_callbacks(memory_callbacks)
+  )
+expect_equal(memory_request_instance |> wt_call("call_host"), 4L)
+memory_request_memory <- memory_request_instance |> wt_memory("memory")
+expect_identical(memory_request_memory |> wt_memory_read(ptr = 64, length = 4, dtype = "u8"), charToRaw("pong"))
+
 missing_export <- tryCatch(wt_call(instance, "missing", 1L), error = identity)
 expect_true(inherits(missing_export, "error"))
 expect_false(inherits(missing_export, "rwasmtime_callback_error"))
@@ -285,14 +322,11 @@ expect_true(isTRUE(status$error))
 err <- tryCatch(job |> wt_await(), error = identity)
 expect_true(inherits(err, "rwasmtime_not_implemented"))
 
-err <- tryCatch(
-  artifact |> wt_instantiate(
-    store = rt |> wt_store(),
-    linker = rt |> wt_linker() |> wt_link_wasi(wasi_callbacks) |> wt_link_callbacks(callbacks)
-  ),
-  error = identity
+combined_instance <- artifact |> wt_instantiate(
+  store = rt |> wt_store(),
+  linker = rt |> wt_linker() |> wt_link_wasi(wasi_callbacks) |> wt_link_callbacks(callbacks)
 )
-expect_true(inherits(err, "rwasmtime_not_implemented"))
+expect_equal(combined_instance |> wt_call("run", 1L), 42L)
 
 missing <- tryCatch(
   artifact |> wt_instantiate(store = rt |> wt_store(), linker = rt |> wt_linker()),

@@ -10,7 +10,8 @@ use rwasmtime::{CompilerSpec, CompilerStrategy, FeatureSpec, RuntimeSpec, StdioM
 use savvy::savvy;
 use savvy::{
     FunctionArgs, FunctionSexp, ListSexp, NullSexp, OwnedIntegerSexp, OwnedListSexp,
-    OwnedLogicalSexp, OwnedRawSexp, OwnedRealSexp, OwnedStringSexp, Sexp, StringSexp, TypedSexp,
+    OwnedLogicalSexp, OwnedRawSexp, OwnedRealSexp, OwnedStringSexp, RawSexp, Sexp, StringSexp,
+    TypedSexp,
 };
 
 /// Native Wasmtime runtime handle owned by the Savvy adapter.
@@ -234,6 +235,7 @@ impl RwasmtimeNativeModule {
         &self,
         callback_modules: StringSexp,
         callback_names: StringSexp,
+        callback_abis: StringSexp,
         callback_functions: ListSexp,
         memory_bytes: f64,
         table_elements: f64,
@@ -245,7 +247,9 @@ impl RwasmtimeNativeModule {
             &self.inner,
             callback_modules,
             callback_names,
+            callback_abis,
             callback_functions,
+            false,
         )?;
         let limits =
             core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
@@ -292,6 +296,58 @@ impl RwasmtimeNativeModule {
         let inner = self
             .inner
             .instantiate_wasi_p1(&wasi, limits)
+            .map_err(to_savvy_error)?;
+        Ok(RwasmtimeNativeInstance { inner })
+    }
+
+    /// Instantiate this compiled core module with WASIp1 and R-backed callback imports linked.
+    fn instantiate_wasi_p1_callbacks(
+        &self,
+        callback_modules: StringSexp,
+        callback_names: StringSexp,
+        callback_abis: StringSexp,
+        callback_functions: ListSexp,
+        args: StringSexp,
+        env_names: StringSexp,
+        env_values: StringSexp,
+        preopen_guest: StringSexp,
+        preopen_host: StringSexp,
+        preopen_readonly: Sexp,
+        stdin: &str,
+        stdout: &str,
+        stderr: &str,
+        memory_bytes: f64,
+        table_elements: f64,
+        instances: f64,
+        fuel: f64,
+        wall_time_ms: f64,
+        input: Sexp,
+    ) -> savvy::Result<RwasmtimeNativeInstance> {
+        let host_funcs = build_core_host_funcs(
+            &self.inner,
+            callback_modules,
+            callback_names,
+            callback_abis,
+            callback_functions,
+            true,
+        )?;
+        let wasi = wasi_spec_from_parts(
+            args,
+            env_names,
+            env_values,
+            preopen_guest,
+            preopen_host,
+            preopen_readonly,
+            stdin,
+            stdout,
+            stderr,
+            input,
+        )?;
+        let limits =
+            core_execution_limits(memory_bytes, table_elements, instances, fuel, wall_time_ms)?;
+        let inner = self
+            .inner
+            .instantiate_wasi_p1_with_host_funcs(&wasi, host_funcs, limits)
             .map_err(to_savvy_error)?;
         Ok(RwasmtimeNativeInstance { inner })
     }
@@ -409,6 +465,49 @@ impl PreservedRFunction {
         assign_callback_results(name, Sexp::from(out), result_tys, results)
             .map_err(savvy_to_wasmtime_error)
     }
+
+    fn call_core_memory_request(
+        &self,
+        callback_name: &str,
+        request_name: &[u8],
+        payload: &[u8],
+        result_cap: u32,
+    ) -> wasmtime::Result<Vec<u8>> {
+        let request_name = std::str::from_utf8(request_name).map_err(|err| {
+            wasmtime_error(format!(
+                "R callback `{callback_name}` received non-UTF-8 request name: {err}"
+            ))
+        })?;
+        let result_cap = i32::try_from(result_cap).map_err(|_| {
+            wasmtime_error(format!(
+                "R callback `{callback_name}` received result_cap larger than i32::MAX"
+            ))
+        })?;
+        let mut fargs = FunctionArgs::new();
+        fargs
+            .add(
+                "name",
+                str_scalar(request_name).map_err(savvy_to_wasmtime_error)?,
+            )
+            .map_err(savvy_to_wasmtime_error)?;
+        fargs
+            .add(
+                "payload",
+                raw_value(payload.to_vec()).map_err(savvy_to_wasmtime_error)?,
+            )
+            .map_err(savvy_to_wasmtime_error)?;
+        fargs
+            .add(
+                "result_cap",
+                int_scalar(result_cap).map_err(savvy_to_wasmtime_error)?,
+            )
+            .map_err(savvy_to_wasmtime_error)?;
+        let out = FunctionSexp(self.inner)
+            .call(fargs)
+            .map_err(|err| wasmtime_error(format!("R callback `{callback_name}` failed: {err}")))?;
+        memory_request_response_bytes(callback_name, Sexp::from(out))
+            .map_err(savvy_to_wasmtime_error)
+    }
 }
 
 impl Drop for PreservedRFunction {
@@ -421,13 +520,19 @@ fn build_core_host_funcs(
     module: &CoreModule,
     callback_modules: StringSexp,
     callback_names: StringSexp,
+    callback_abis: StringSexp,
     callback_functions: ListSexp,
+    allow_unprovided_imports: bool,
 ) -> savvy::Result<Vec<CoreHostFunc>> {
     let modules = string_vec(callback_modules);
     let names = string_vec(callback_names);
-    if modules.len() != names.len() || names.len() != callback_functions.len() {
+    let abis = string_vec(callback_abis);
+    if modules.len() != names.len()
+        || names.len() != abis.len()
+        || names.len() != callback_functions.len()
+    {
         return Err(savvy::Error::new(
-            "callback module/name/function vectors must have the same length",
+            "callback module/name/abi/function vectors must have the same length",
         ));
     }
 
@@ -439,36 +544,70 @@ fn build_core_host_funcs(
                 "duplicate callback import: {key}"
             )));
         }
+        let abi = abis[index].clone();
+        if abi != "core" && abi != "core_memory_request" {
+            return Err(savvy::Error::new(&format!(
+                "unsupported native core callback ABI for `{key}`: {abi}"
+            )));
+        }
         let function = callback_functions.get_by_index(index).ok_or_else(|| {
             savvy::Error::new("callback function list is shorter than callback names")
         })?;
-        callbacks.insert(key, Arc::new(PreservedRFunction::new(function)?));
+        callbacks.insert(key, (Arc::new(PreservedRFunction::new(function)?), abi));
     }
 
     let mut used = HashSet::new();
     let mut host_funcs = Vec::new();
-    let mut linked_signatures: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+    let mut linked_signatures: HashMap<String, (String, Vec<String>, Vec<String>)> = HashMap::new();
     for import in module.func_imports() {
         let key = format!("{}::{}", import.module, import.name);
-        let Some(function) = callbacks.get(&key).cloned() else {
+        let Some((function, abi)) = callbacks.get(&key).cloned() else {
+            if allow_unprovided_imports {
+                continue;
+            }
             return Err(savvy::Error::new(&format!(
                 "missing R callback for core import `{key}`"
             )));
         };
         used.insert(key.clone());
         let signature = (
+            abi.clone(),
             val_type_names(&import.params),
             val_type_names(&import.results),
         );
         if let Some(existing) = linked_signatures.get(&key) {
             if existing != &signature {
                 return Err(savvy::Error::new(&format!(
-                    "core callback import `{key}` is used with incompatible function signatures"
+                    "core callback import `{key}` is used with incompatible function signatures or callback ABIs"
                 )));
             }
             continue;
         }
         linked_signatures.insert(key.clone(), signature);
+        if abi == "core_memory_request" {
+            let expected_params = vec!["i32".to_string(); 6];
+            let expected_results = vec!["i32".to_string()];
+            if val_type_names(&import.params) != expected_params
+                || val_type_names(&import.results) != expected_results
+            {
+                return Err(savvy::Error::new(&format!(
+                    "core_memory_request callback `{key}` requires signature (i32, i32, i32, i32, i32, i32) -> i32"
+                )));
+            }
+            host_funcs.push(CoreHostFunc::new_memory_request(
+                import.module,
+                import.name,
+                Arc::new(move |callback_name, request_name, payload, result_cap| {
+                    function.call_core_memory_request(
+                        callback_name,
+                        request_name,
+                        payload,
+                        result_cap,
+                    )
+                }),
+            ));
+            continue;
+        }
         let result_tys = import.results.clone();
         host_funcs.push(CoreHostFunc::new(
             import.module,
@@ -497,7 +636,26 @@ fn build_core_host_funcs(
 }
 
 fn val_type_names(types: &[wasmtime::ValType]) -> Vec<String> {
-    types.iter().map(|ty| format!("{ty:?}")).collect()
+    types.iter().map(|ty| ty.to_string()).collect()
+}
+
+fn memory_request_response_bytes(name: &str, value: Sexp) -> savvy::Result<Vec<u8>> {
+    if value.is_raw() {
+        return Ok(RawSexp::try_from(value)?.to_vec());
+    }
+    if value.is_string() {
+        let strings = StringSexp::try_from(value)?;
+        let values: Vec<String> = strings.to_vec().into_iter().map(String::from).collect();
+        if values.len() != 1 {
+            return Err(savvy::Error::new(&format!(
+                "R callback `{name}` must return a raw vector or character scalar"
+            )));
+        }
+        return Ok(values[0].as_bytes().to_vec());
+    }
+    Err(savvy::Error::new(&format!(
+        "R callback `{name}` must return a raw vector or character scalar"
+    )))
 }
 
 fn assign_callback_results(

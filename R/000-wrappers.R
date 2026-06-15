@@ -132,14 +132,20 @@ class(`RwasmtimeNativeInstance`) <- c("Rwasmtime::RwasmtimeNativeInstance__bundl
 }
 
 `RwasmtimeNativeModule_instantiate_callbacks` <- function(self) {
-  function(`callback_modules`, `callback_names`, `callback_functions`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`) {
-    .savvy_wrap_RwasmtimeNativeInstance(.Call(savvy_RwasmtimeNativeModule_instantiate_callbacks__impl, `self`, `callback_modules`, `callback_names`, `callback_functions`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`))
+  function(`callback_modules`, `callback_names`, `callback_abis`, `callback_functions`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`) {
+    .savvy_wrap_RwasmtimeNativeInstance(.Call(savvy_RwasmtimeNativeModule_instantiate_callbacks__impl, `self`, `callback_modules`, `callback_names`, `callback_abis`, `callback_functions`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`))
   }
 }
 
 `RwasmtimeNativeModule_instantiate_wasi_p1` <- function(self) {
   function(`args`, `env_names`, `env_values`, `preopen_guest`, `preopen_host`, `preopen_readonly`, `stdin`, `stdout`, `stderr`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`, `input`) {
     .savvy_wrap_RwasmtimeNativeInstance(.Call(savvy_RwasmtimeNativeModule_instantiate_wasi_p1__impl, `self`, `args`, `env_names`, `env_values`, `preopen_guest`, `preopen_host`, `preopen_readonly`, `stdin`, `stdout`, `stderr`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`, `input`))
+  }
+}
+
+`RwasmtimeNativeModule_instantiate_wasi_p1_callbacks` <- function(self) {
+  function(`callback_modules`, `callback_names`, `callback_abis`, `callback_functions`, `args`, `env_names`, `env_values`, `preopen_guest`, `preopen_host`, `preopen_readonly`, `stdin`, `stdout`, `stderr`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`, `input`) {
+    .savvy_wrap_RwasmtimeNativeInstance(.Call(savvy_RwasmtimeNativeModule_instantiate_wasi_p1_callbacks__impl, `self`, `callback_modules`, `callback_names`, `callback_abis`, `callback_functions`, `args`, `env_names`, `env_values`, `preopen_guest`, `preopen_host`, `preopen_readonly`, `stdin`, `stdout`, `stderr`, `memory_bytes`, `table_elements`, `instances`, `fuel`, `wall_time_ms`, `input`))
   }
 }
 
@@ -157,6 +163,7 @@ class(`RwasmtimeNativeInstance`) <- c("Rwasmtime::RwasmtimeNativeInstance__bundl
   e$`instantiate` <- `RwasmtimeNativeModule_instantiate`(ptr)
   e$`instantiate_callbacks` <- `RwasmtimeNativeModule_instantiate_callbacks`(ptr)
   e$`instantiate_wasi_p1` <- `RwasmtimeNativeModule_instantiate_wasi_p1`(ptr)
+  e$`instantiate_wasi_p1_callbacks` <- `RwasmtimeNativeModule_instantiate_wasi_p1_callbacks`(ptr)
   e$`serialize` <- `RwasmtimeNativeModule_serialize`(ptr)
 
   class(e) <- c("Rwasmtime::RwasmtimeNativeModule", "RwasmtimeNativeModule", "savvy_Rwasmtime__sealed")

@@ -224,9 +224,13 @@ session semantics by running a guest bootstrap loop that obtains work through a
 custom host import (`micropython_wasm.host_call`) and reports results through the
 same host channel. This validates the guest-owned REPL protocol direction.
 
-Current blocker: the artifact uses Wasm exception handling and imports custom
-host functions (`micropython_wasm.host_call` and `host_result_cap`) in addition
-to WASI. Current Rwasmtime rejects `exceptions = TRUE` honestly, and custom typed
-host imports beyond core callbacks are not implemented. Once modern Wasm
-exceptions and typed host imports are available, this artifact is a strong native
-integration test candidate.
+Resolution update: modern Wasm exceptions are now a separate supported runtime
+feature (`exceptions = TRUE`), while `legacy_exceptions` remains unsupported for
+Emscripten/webR modules. Low-level native instantiation can combine WASIp1 with
+callbacks, and `abi = "core_memory_request"` implements a deliberately copied
+request/response ABI for imports shaped like
+`(name_ptr, name_len, payload_ptr, payload_len, result_ptr, result_cap) -> i32`.
+This is enough for Simon Willison's command-style `micropython-wasi.wasm` to run
+simple `micropython -c` code and host JSON calls under Rwasmtime. It is not yet a
+persistent REPL adapter: background guest execution, request queues, stdout/stderr
+routing per request, and high-level session verbs remain explicit future work.
