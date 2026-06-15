@@ -24,6 +24,8 @@ jobs:
             any::tinytest
             any::knitr
             any::rmarkdown
+      - name: Install package for pkgdown reference examples
+        run: R CMD INSTALL --preclean .
       - name: Build pkgdown site
         run: Rscript -e 'pkgdown::build_site(install = FALSE)'
       - uses: actions/upload-pages-artifact@v4
